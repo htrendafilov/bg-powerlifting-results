@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% load archive_tags %}
+{% block title %}{{ competition.name }}{% endblock %}
+{% block content %}
+  <h1>{{ competition.name }}</h1>
+  <p class="lead">
+    {{ competition.start_date|date:"d.m.Y" }}
+    {% if competition.end_date and competition.end_date != competition.start_date %} – {{ competition.end_date|date:"d.m.Y" }}{% endif %}
+    {% if competition.city %} · {{ competition.city }}{% endif %}
+    · {{ competition.get_level_display }}
+  </p>
+  {% if competition.notes %}<p>{{ competition.notes }}</p>{% endif %}
+
+  {% if competition.files.all %}
+    <h2>Протоколи и файлове</h2>
+    <ul class="file-list">
+      {% for item in competition.files.all %}
+        <li>
+          {% if item.kind == "scan" and item.file %}
+            <a href="{{ item.file.url }}"><img src="{{ item.file.url }}" alt="{{ item.title|default:'Страница от протокол' }}"></a>
+          {% elif item.file %}
+            <a href="{{ item.file.url }}">{{ item.title|default:item.file.name }}</a>
+            <span>{{ item.get_kind_display }}</span>
+          {% elif item.url %}
+            <a href="{{ item.url }}">{{ item.title|default:item.url }}</a>
+            <span>линк</span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <form class="filters" method="get">
+    <label>Пол
+      <select name="sex">
+        <option value="">Всички</option>
+        {% for value, label in filters.sex.choices %}
+          <option value="{{ value }}" {% if value == filters.selected_sex %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Възраст
+      <select name="age">
+        <option value="">Всички</option>
+        {% for value, label in filters.age.choices %}
+          <option value="{{ value }}" {% if value == filters.selected_age %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Екипировка
+      <select name="equipment">
+        <option value="">Всички</option>
+        {% for value, label in filters.equipment.choices %}
+          <option value="{{ value }}" {% if value == filters.selected_equipment %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Дисциплина
+      <select name="event">
+        <option value="">Всички</option>
+        {% for value, label in filters.event.choices %}
+          <option value="{{ value }}" {% if value == filters.selected_event %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Филтрирай</button>
+  </form>
+
+  {% if results %}
+    <div class="table-wrap">
+      <table class="results">
+        <thead>
+          <tr>
+            <th>Място</th>
+            <th>Име</th>
+            <th>Клуб</th>
+            <th>Кат.</th>
+            <th>Възраст</th>
+            <th>Т.т.</th>
+            {% if show_squat %}<th colspan="3">Клек</th>{% endif %}
+            <th colspan="3">Лег</th>
+            {% if show_deadlift %}<th colspan="3">Тяга</th>{% endif %}
+            {% if show_squat %}<th>Тотал</th>{% endif %}
+            <th>Точки</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for result in results %}
+            <tr>
+              <td>{{ result.place|default:"–" }}</td>
+              <td><a href="{% url 'athlete_detail' result.athlete.slug %}">{{ result.athlete.display_name }}</a></td>
+              <td>{{ result.club|default:"–" }}</td>
+              <td>{{ result.weight_class }}{% if result.equipment == "equipped" %} екип{% else %} кл.{% endif %}</td>
+              <td>{{ result.get_age_group_display }}</td>
+              <td>{{ result.bodyweight|kg }}</td>
+              {% if show_squat %}
+                <td>{% attempt result.squat1 %}</td>
+                <td>{% attempt result.squat2 %}</td>
+                <td>{% attempt result.squat3 %}</td>
+              {% endif %}
+              <td>{% attempt result.bench1 %}</td>
+              <td>{% attempt result.bench2 %}</td>
+              <td>{% attempt result.bench3 %}</td>
+              {% if show_deadlift %}
+                <td>{% attempt result.deadlift1 %}</td>
+                <td>{% attempt result.deadlift2 %}</td>
+                <td>{% attempt result.deadlift3 %}</td>
+              {% endif %}
+              {% if show_squat %}<td>{{ result.total|kg }}</td>{% endif %}
+              <td>{{ result.points|kg }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p>За този турнир още няма въведени редове. Файловете по-горе са източникът.</p>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,486 @@
+import csv
+import re
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
+from io import BytesIO, StringIO
+
+import openpyxl
+
+from archive.models import AgeGroup, Equipment, Event, Sex
+
+_HEADER_ALIASES = {
+    "place": "place",
+    "pl": "place",
+    "name": "name",
+    "sex": "sex",
+    "country": "country",
+    "division": "division",
+    "bodyweightkg": "bodyweight",
+    "weightclasskg": "weight_class",
+    "squat1kg": "squat1",
+    "squat2kg": "squat2",
+    "squat3kg": "squat3",
+    "squat4kg": "squat4",
+    "bench1kg": "bench1",
+    "bench2kg": "bench2",
+    "bench3kg": "bench3",
+    "bench4kg": "bench4",
+    "deadlift1kg": "deadlift1",
+    "deadlift2kg": "deadlift2",
+    "deadlift3kg": "deadlift3",
+    "deadlift4kg": "deadlift4",
+    "best3squatkg": "best_squat",
+    "best3benchkg": "best_bench",
+    "best3deadliftkg": "best_deadlift",
+    "totalkg": "total",
+    "points": "points",
+    "pts": "points",
+    "goodlift": "points",
+    "event": "event",
+    "club": "club",
+    "team": "club",
+    "equipment": "equipment",
+    "1att": "att1",
+    "2att": "att2",
+    "3att": "att3",
+    "4att": "att4",
+    "result": "result",
+    "weight": "bodyweight",
+    "lot": "lot",
+    "nation": "nation",
+}
+
+
+@dataclass
+class ParsedRow:
+    place: str = ""
+    raw_name: str = ""
+    sex: str = ""
+    country: str = ""
+    age_group: str = ""
+    equipment: str = ""
+    event: str = ""
+    weight_class: str = ""
+    bodyweight: Decimal | None = None
+    club: str = ""
+    lot: str = ""
+    attempts: dict = field(default_factory=dict)
+    best_squat: Decimal | None = None
+    best_bench: Decimal | None = None
+    best_deadlift: Decimal | None = None
+    total: Decimal | None = None
+    points: Decimal | None = None
+    points_formula: str = ""
+    warnings: list = field(default_factory=list)
+    errors: list = field(default_factory=list)
+
+
+@dataclass
+class ParsedFile:
+    kind: str
+    title: str = ""
+    meet_date: date | None = None
+    city: str = ""
+    formula: str = ""
+    rows: list = field(default_factory=list)
+    errors: list = field(default_factory=list)
+
+
+def parse_upload(filename, payload):
+    name = (filename or "").lower()
+    if name.endswith(".csv"):
+        text = payload.decode("utf-8-sig", errors="replace")
+        rows = list(csv.reader(StringIO(text)))
+        return _parse_table("Файл", rows)
+    if name.endswith(".xlsx"):
+        workbook = openpyxl.load_workbook(BytesIO(payload), data_only=True, read_only=True)
+        parsed_sheets = []
+        for sheet in workbook.worksheets:
+            table = [_clean_row(row) for row in sheet.iter_rows(values_only=True)]
+            parsed = _parse_table(sheet.title, table)
+            if parsed.rows:
+                parsed_sheets.append(parsed)
+        if not parsed_sheets:
+            return ParsedFile(kind="", errors=["Файлът не е протокол от Goodlift или таблица с колони Place/Name."])
+        merged = parsed_sheets[0]
+        for extra in parsed_sheets[1:]:
+            merged.rows.extend(extra.rows)
+            merged.errors.extend(extra.errors)
+        return merged
+    return ParsedFile(kind="", errors=["Приемат се .xlsx и .csv. Стар .xls се качва като файл към турнира и се нанася отделно."])
+
+
+def _clean_row(row):
+    cleaned = []
+    for value in row:
+        if value is None:
+            cleaned.append("")
+        elif isinstance(value, datetime):
+            cleaned.append(value.date().isoformat())
+        elif isinstance(value, date):
+            cleaned.append(value.isoformat())
+        elif isinstance(value, float):
+            cleaned.append(str(int(value)) if value.is_integer() else str(value))
+        elif isinstance(value, int):
+            cleaned.append(str(value))
+        else:
+            cleaned.append(str(value).strip().lstrip("'"))
+    return cleaned
+
+
+def _parse_table(title, rows):
+    header_index, mapping = _find_header(rows)
+    if header_index is None:
+        return ParsedFile(kind="")
+    kind = "goodlift" if "att1" in mapping.values() else "opl"
+    meta = _metadata(rows[:header_index])
+    blob = " ".join(cell for row in rows[: header_index + 1] for cell in row if cell)
+    parsed = ParsedFile(
+        kind=kind,
+        title=meta.get("title") or title,
+        meet_date=_parse_date(meta.get("date", "")) or _date_in_text(blob),
+        city=meta.get("city", ""),
+        formula=meta.get("formula", ""),
+    )
+    division = ""
+    sex = ""
+    weight_class = ""
+    for row in rows[header_index + 1 :]:
+        if not any(row):
+            continue
+        label = _single_label(row)
+        if label and not _is_place(label):
+            found_sex = _sex_label(label)
+            found_class = normalize_weight_class(label)
+            found_division = _division_label(label)
+            if found_sex and not found_division:
+                sex = found_sex
+                continue
+            if found_class and _looks_like_class_label(label):
+                weight_class = found_class
+                continue
+            if found_division:
+                division = found_division
+                continue
+            continue
+        if not _is_place(_mapped(row, mapping, "place")):
+            continue
+        item = _row_from_mapping(row, mapping, kind)
+        item.age_group = item.age_group or division
+        item.sex = item.sex or sex
+        item.weight_class = item.weight_class or weight_class
+        item.equipment = item.equipment or _equipment_in_text(blob)
+        item.points_formula = parsed.formula
+        if kind == "goodlift":
+            item.event = _event_in_text(blob) or item.event
+            nation = _mapped(row, mapping, "nation")
+            if nation and not item.club:
+                item.club = nation
+        if not item.raw_name:
+            item.errors.append("Липсва име.")
+        parsed.rows.append(item)
+    if not parsed.rows:
+        parsed.errors.append(f"{title}: разпознат е заглавен ред, но няма стартове.")
+    return parsed
+
+
+def _find_header(rows):
+    for index, row in enumerate(rows[:40]):
+        normalized = [_norm_header(cell) for cell in row]
+        if "name" not in normalized:
+            continue
+        if "place" in normalized or "pl" in normalized:
+            return index, _header_map(normalized)
+    return None, {}
+
+
+def _header_map(normalized):
+    mapping = {}
+    for index, header in enumerate(normalized):
+        field_name = _HEADER_ALIASES.get(header)
+        if field_name and field_name not in mapping.values():
+            mapping[index] = field_name
+    return mapping
+
+
+def _norm_header(value):
+    return re.sub(r"[^a-z0-9а-я]", "", (value or "").lower())
+
+
+def _metadata(rows):
+    found = {}
+    labels_of_interest = {"date", "meetname", "meettown", "formula", "federation", "meetcountry"}
+    for index, row in enumerate(rows):
+        labels = [_norm_header(cell) for cell in row]
+        for key, label in (
+            ("date", "date"),
+            ("title", "meetname"),
+            ("city", "meettown"),
+            ("formula", "formula"),
+        ):
+            if label not in labels:
+                continue
+            position = labels.index(label)
+            right = row[position + 1] if position + 1 < len(row) else ""
+            below = ""
+            if index + 1 < len(rows) and position < len(rows[index + 1]):
+                below = rows[index + 1][position]
+            if right and _norm_header(right) not in labels_of_interest:
+                found[key] = right
+            elif below:
+                found[key] = below
+    return found
+
+
+def _mapped(row, mapping, field_name, default=""):
+    for index, name in mapping.items():
+        if name == field_name and index < len(row):
+            return row[index]
+    return default
+
+
+def _row_from_mapping(row, mapping, kind):
+    item = ParsedRow(
+        place=_clean_place(_mapped(row, mapping, "place")),
+        raw_name=_mapped(row, mapping, "name"),
+        sex=_sex_label(_mapped(row, mapping, "sex")) or "",
+        country=_mapped(row, mapping, "country"),
+        age_group=_division_label(_mapped(row, mapping, "division")) or "",
+        equipment=_equipment_in_text(_mapped(row, mapping, "equipment")) or "",
+        event=_event_code(_mapped(row, mapping, "event")),
+        weight_class=normalize_weight_class(_mapped(row, mapping, "weight_class")),
+        bodyweight=_decimal(_mapped(row, mapping, "bodyweight")),
+        club=_mapped(row, mapping, "club") or _extra_club(row, mapping),
+        lot=_mapped(row, mapping, "lot"),
+        points=_decimal(_mapped(row, mapping, "points")),
+    )
+    if kind == "opl":
+        for name in (
+            "squat1",
+            "squat2",
+            "squat3",
+            "squat4",
+            "bench1",
+            "bench2",
+            "bench3",
+            "bench4",
+            "deadlift1",
+            "deadlift2",
+            "deadlift3",
+            "deadlift4",
+        ):
+            item.attempts[name] = _signed_kg(_mapped(row, mapping, name))
+        item.best_squat = _positive(_mapped(row, mapping, "best_squat")) or _best_of(item, "squat")
+        item.best_bench = _positive(_mapped(row, mapping, "best_bench")) or _best_of(item, "bench")
+        item.best_deadlift = _positive(_mapped(row, mapping, "best_deadlift")) or _best_of(item, "deadlift")
+        item.total = _positive(_mapped(row, mapping, "total"))
+        if not item.event:
+            item.event = Event.SBD if item.best_squat is not None or item.best_deadlift is not None else Event.B
+    else:
+        attempts = [_signed_kg(_mapped(row, mapping, f"att{number}")) for number in range(1, 5)]
+        lift = "bench"
+        item.event = Event.B
+        for number, value in enumerate(attempts, start=1):
+            if value is not None:
+                item.attempts[f"{lift}{number}"] = value
+        item.best_bench = _positive(_mapped(row, mapping, "result")) or _best_of(item, "bench")
+        if any(value is not None and value != item.best_bench for value in attempts if value is not None and value < 0):
+            pass
+        if "X" in "".join(_mapped(row, mapping, f"att{number}") for number in range(1, 4)).upper():
+            item.warnings.append("Има неуспешен опит без записано тегло.")
+    if item.event == Event.SBD and item.total is None:
+        if item.best_squat and item.best_bench and item.best_deadlift:
+            item.total = item.best_squat + item.best_bench + item.best_deadlift
+    return item
+
+
+def _extra_club(row, mapping):
+    if not mapping:
+        return ""
+    last = max(mapping)
+    extras = [row[index] for index in range(last + 1, len(row)) if row[index]]
+    if len(extras) == 1:
+        return extras[0]
+    return ""
+
+
+def _best_of(item, lift):
+    values = []
+    for number in range(1, 4):
+        value = item.attempts.get(f"{lift}{number}")
+        if value is not None and value > 0:
+            values.append(value)
+    return max(values) if values else None
+
+
+def _single_label(row):
+    filled = [cell for cell in row if cell]
+    if len(filled) == 1:
+        return filled[0]
+    return ""
+
+
+def _is_place(value):
+    text = (value or "").strip().upper()
+    if text in {"NS", "DQ", "DD", "G", "DNS", "DSQ"}:
+        return True
+    try:
+        number = float(text.replace(",", "."))
+    except ValueError:
+        return False
+    return number >= 0 and number == int(number)
+
+
+def _clean_place(value):
+    text = (value or "").strip().upper()
+    if text in {"NS", "DQ", "DD", "G", "DNS", "DSQ"}:
+        return "NS" if text == "DNS" else text
+    try:
+        return str(int(float(text.replace(",", "."))))
+    except ValueError:
+        return text
+
+
+def _sex_label(value):
+    text = (value or "").strip().lower()
+    if text in {"m", "мъж", "мъже", "men", "male"}:
+        return Sex.M
+    if text in {"f", "ж", "жена", "жени", "women", "female"}:
+        return Sex.F
+    return ""
+
+
+def _division_label(value):
+    text = re.sub(r"[^a-zа-я0-9]+", "", (value or "").strip().lower())
+    if not text:
+        return ""
+    table = {
+        "sjr": AgeGroup.SUBJUNIOR,
+        "subjunior": AgeGroup.SUBJUNIOR,
+        "subjuniors": AgeGroup.SUBJUNIOR,
+        "до18": AgeGroup.SUBJUNIOR,
+        "юноши": AgeGroup.SUBJUNIOR,
+        "юношиидевойки": AgeGroup.SUBJUNIOR,
+        "jr": AgeGroup.JUNIOR,
+        "junior": AgeGroup.JUNIOR,
+        "juniors": AgeGroup.JUNIOR,
+        "до23": AgeGroup.JUNIOR,
+        "младежи": AgeGroup.JUNIOR,
+        "младежидо23": AgeGroup.JUNIOR,
+        "девойкидо23": AgeGroup.JUNIOR,
+        "o": AgeGroup.OPEN,
+        "open": AgeGroup.OPEN,
+        "открита": AgeGroup.OPEN,
+        "m1": AgeGroup.M1,
+        "masters1": AgeGroup.M1,
+        "m2": AgeGroup.M2,
+        "masters2": AgeGroup.M2,
+        "m3": AgeGroup.M3,
+        "masters3": AgeGroup.M3,
+        "m4": AgeGroup.M4,
+        "masters4": AgeGroup.M4,
+    }
+    return table.get(text, "")
+
+
+def _looks_like_class_label(value):
+    text = (value or "").strip().lower()
+    return bool(re.fullmatch(r"-?\s*\d+(?:[.,]\d+)?\s*\+?\s*(?:kg|кг)?", text))
+
+
+def normalize_weight_class(value):
+    text = (value or "").strip().lower().replace("кг", "").replace("kg", "").replace(" ", "")
+    text = text.replace(",", ".")
+    if not text:
+        return ""
+    plus = text.endswith("+") or text.startswith("+")
+    text = text.strip("+-")
+    if text.startswith("-"):
+        text = text[1:]
+    try:
+        number = Decimal(text)
+    except InvalidOperation:
+        return ""
+    whole = str(int(number)) if number == int(number) else format(number.normalize(), "f")
+    return f"{whole}+" if plus else whole
+
+
+def _equipment_in_text(value):
+    text = (value or "").lower()
+    if "без екип" in text or "classic" in text or "raw" in text or "класик" in text:
+        return Equipment.CLASSIC
+    if "екип" in text or "equipped" in text or "single-ply" in text or "single ply" in text:
+        return Equipment.EQUIPPED
+    return ""
+
+
+def _event_in_text(value):
+    text = (value or "").lower()
+    if "трибой" in text or "powerlifting" in text:
+        return Event.SBD
+    if "лег" in text or "bench" in text:
+        return Event.B
+    return ""
+
+
+def _event_code(value):
+    text = (value or "").strip().upper()
+    if text in {Event.SBD, Event.B}:
+        return text
+    return ""
+
+
+def _date_in_text(value):
+    match = re.search(r"(\d{1,2})[.](\d{1,2})[.](\d{4})", value or "")
+    if match:
+        day, month, year = (int(part) for part in match.groups())
+        try:
+            return date(year, month, day)
+        except ValueError:
+            return None
+    match = re.search(r"(\d{4})-(\d{2})-(\d{2})", value or "")
+    if match:
+        year, month, day = (int(part) for part in match.groups())
+        try:
+            return date(year, month, day)
+        except ValueError:
+            return None
+    return None
+
+
+def _parse_date(value):
+    text = (value or "").strip()
+    if not text:
+        return None
+    text = text[:10]
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _decimal(value):
+    text = (value or "").strip().replace(",", ".").replace(" ", "")
+    if not text or text.upper() == "X":
+        return None
+    try:
+        return Decimal(text)
+    except InvalidOperation:
+        return None
+
+
+def _signed_kg(value):
+    text = (value or "").strip()
+    if not text or text.upper() == "X":
+        return None
+    return _decimal(text)
+
+
+def _positive(value):
+    number = _decimal(value)
+    if number is None or number <= 0:
+        return None
+    return number

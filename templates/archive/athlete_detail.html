@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% load archive_tags %}
+{% block title %}{{ athlete.display_name }}{% endblock %}
+{% block content %}
+  <h1>{{ athlete.display_name }}</h1>
+  <p class="lead">
+    {{ athlete.get_sex_display }}
+    {% if athlete.name_lat and athlete.name_bg %} · {{ athlete.name_lat }}{% endif %}
+    {% if athlete.birth_year %} · роден/а {{ athlete.birth_year }}{% endif %}
+  </p>
+  {% if photos %}
+    <h2>През годините</h2>
+    <ul class="photos">
+      {% for photo in photos %}
+        <li>
+          <img src="{{ photo.image.url }}" alt="{{ photo.caption|default:athlete.display_name }}">
+          <span>{{ photo.year }}{% if photo.caption %} · {{ photo.caption }}{% endif %}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  <h2>Стартове</h2>
+  {% if results %}
+    <div class="table-wrap">
+      <table class="results">
+        <thead>
+          <tr>
+            <th>Дата</th><th>Състезание</th><th>Дисциплина</th><th>Кат.</th><th>Клек</th><th>Лег</th><th>Тяга</th><th>Тотал</th><th>Място</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for result in results %}
+            <tr>
+              <td>{{ result.competition.start_date|date:"d.m.Y" }}</td>
+              <td><a href="{% url 'competition_detail' result.competition.slug %}">{{ result.competition.name }}</a></td>
+              <td>{{ result.get_event_display }} · {{ result.get_equipment_display }}</td>
+              <td>{{ result.weight_class }}</td>
+              <td>{{ result.best_squat|kg }}</td>
+              <td>{{ result.best_bench|kg }}</td>
+              <td>{{ result.best_deadlift|kg }}</td>
+              <td>{{ result.total|kg }}</td>
+              <td>{{ result.place|default:"–" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p>Няма въведени стартове.</p>
+  {% endif %}
+{% endblock %}

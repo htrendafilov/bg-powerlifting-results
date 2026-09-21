@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% load archive_tags %}
+{% block title %}История на рекорд{% endblock %}
+{% block content %}
+  <h1>История</h1>
+  <p class="lead">
+    {{ filters.sex }} · {{ filters.age_group }} · {{ filters.equipment }} · {{ filters.event }} · {{ filters.lift }} · {{ filters.weight_class }}
+  </p>
+  {% if standard %}
+    <p>Норматив: {{ standard.value_kg|kg }} кг. Резултат под него не става рекорд, докато няма по-висок записан.</p>
+  {% endif %}
+  {% if history %}
+    <div class="table-wrap">
+      <table class="results">
+        <thead>
+          <tr><th>От</th><th>До</th><th>Резултат</th><th>Състезател</th><th>Източник</th></tr>
+        </thead>
+        <tbody>
+          {% for record in history %}
+            <tr>
+              <td>{{ record.valid_from|date:"d.m.Y"|default:"–" }}</td>
+              <td>{% if record.valid_to %}{{ record.valid_to|date:"d.m.Y" }}{% else %}текущ{% endif %}</td>
+              <td>{{ record.value_kg|kg }}</td>
+              <td>
+                {% if record.athlete %}
+                  <a href="{% url 'athlete_detail' record.athlete.slug %}">{{ record.athlete.display_name }}</a>
+                {% else %}–{% endif %}
+              </td>
+              <td>
+                {% if record.result %}
+                  <a href="{% url 'competition_detail' record.result.competition.slug %}">{{ record.result.competition.name }}</a>
+                {% else %}
+                  {{ record.get_origin_display }}{% if record.note %} · {{ record.note }}{% endif %}
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p>Няма записан рекорд за тази клетка.</p>
+  {% endif %}
+  <p><a href="{% url 'records' %}">Обратно към рекордите</a></p>
+{% endblock %}

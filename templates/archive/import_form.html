@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Импорт{% endblock %}
+{% block content %}
+  <h1>Импорт на протокол</h1>
+  <p class="lead">Качва се ексел от Goodlift (лист с опити) или таблица с колони Place, Name, Sex, както е файлът от Свищов 2026. Преди запис има преглед.</p>
+  <form class="stack" method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Преглед</button>
+  </form>
+{% endblock %}

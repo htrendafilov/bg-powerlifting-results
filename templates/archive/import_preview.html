@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Преглед на импорта{% endblock %}
+{% block content %}
+  <h1>Преглед</h1>
+  <p class="lead">{{ options.filename }} · {{ parsed.kind }} · {{ ready|length }} реда за запис{% if blocked %} · {{ blocked|length }} спрени{% endif %}</p>
+  {% if parsed.meet_date %}<p>Дата от файла: {{ parsed.meet_date|date:"d.m.Y" }}</p>{% endif %}
+  {% if blocked %}
+    <h2>Спрени редове</h2>
+    <ul>
+      {% for item in blocked %}
+        <li>Ред {{ item.row }} {{ item.name }} — {{ item.problems|join:"; " }}</li>
+      {% endfor %}
+    </ul>
+    <p>Поправи файла или избора за пол, възраст и дисциплина, после го качи отново.</p>
+    <p><a href="{% url 'import_meet' %}">Назад</a></p>
+  {% else %}
+    <div class="table-wrap">
+      <table class="results">
+        <thead>
+          <tr>
+            <th>Място</th><th>Име</th><th></th><th>Пол</th><th>Възраст</th><th>Кат.</th><th>Клек</th><th>Лег</th><th>Тяга</th><th>Тотал</th><th>Клуб</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in ready %}
+            <tr>
+              <td>{{ item.place }}</td>
+              <td>{{ item.raw_name }}</td>
+              <td>{% if item.match == "new" %}нов{% else %}съществува{% endif %}</td>
+              <td>{{ item.sex }}</td>
+              <td>{{ item.age_group }}</td>
+              <td>{{ item.weight_class }}</td>
+              <td>{{ item.best_squat|default:"–" }}</td>
+              <td>{{ item.best_bench|default:"–" }}</td>
+              <td>{{ item.best_deadlift|default:"–" }}</td>
+              <td>{{ item.total|default:"–" }}</td>
+              <td>{{ item.club }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <form method="post" action="{% url 'import_confirm' %}">
+      {% csrf_token %}
+      <button type="submit">Запиши</button>
+      <a href="{% url 'import_meet' %}">Отказ</a>
+    </form>
+  {% endif %}
+{% endblock %}

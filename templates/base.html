@@ -1,0 +1,35 @@
+{% load i18n %}
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Архив на българския силов трибой{% endblock %}</title>
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'archive/site.css' %}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="{% url 'home' %}">Силов трибой <span>България</span></a>
+    <nav>
+      <a href="{% url 'competition_list' %}">{% translate "Състезания" %}</a>
+      <a href="{% url 'records' %}">{% translate "Рекорди" %}</a>
+      <a href="{% url 'athlete_list' %}">{% translate "Състезатели" %}</a>
+      {% if user.is_staff %}
+        <a href="{% url 'import_meet' %}">{% translate "Импорт" %}</a>
+        <a href="{% url 'admin:index' %}">{% translate "Админ" %}</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main>
+    {% if messages %}
+      <ul class="messages">
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

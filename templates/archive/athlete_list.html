@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Състезатели{% endblock %}
+{% block content %}
+  <h1>Състезатели</h1>
+  <form class="filters" method="get">
+    <label>Име
+      <input type="search" name="q" value="{{ query }}" placeholder="на български или латиница">
+    </label>
+    <button type="submit">Търси</button>
+  </form>
+  <ul class="meet-list">
+    {% for athlete in athletes %}
+      <li>
+        <a href="{% url 'athlete_detail' athlete.slug %}">{{ athlete.display_name }}</a>
+        <span>{{ athlete.get_sex_display }}{% if athlete.name_lat and athlete.name_bg %} · {{ athlete.name_lat }}{% endif %}</span>
+      </li>
+    {% empty %}
+      <li>Няма намерени състезатели.</li>
+    {% endfor %}
+  </ul>
+{% endblock %}

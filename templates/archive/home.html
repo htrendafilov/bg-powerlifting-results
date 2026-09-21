@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Архив на българския силов трибой{% endblock %}
+{% block content %}
+  <h1>Резултати от българския силов трибой</h1>
+  <p class="lead">Национални състезания и стартовете на българи в международните. До всеки турнир стоят протоколът, екселът и линковете, от които идват числата.</p>
+  <p class="stats">{{ athlete_count }} състезатели · {{ result_count }} старта</p>
+  <h2>Последни състезания</h2>
+  {% if competitions %}
+    <ul class="meet-list">
+      {% for competition in competitions %}
+        <li>
+          <a href="{% url 'competition_detail' competition.slug %}">{{ competition.name }}</a>
+          <span>{{ competition.start_date|date:"d.m.Y" }}{% if competition.city %} · {{ competition.city }}{% endif %}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>Все още няма въведени състезания.</p>
+  {% endif %}
+{% endblock %}
