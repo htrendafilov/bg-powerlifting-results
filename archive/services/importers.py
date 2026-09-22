@@ -186,6 +186,10 @@ def _parse_table(title, rows):
     # heading starts such a block, so rows are dropped until the next heading
     # that names a division, a sex or a weight class.
     ignoring = False
+    # Dropping a block is only safe when the rows need the heading to be read at
+    # all. A sheet carrying its own Division column does not: there the headings
+    # are decoration and an unknown one must not take the rows with it.
+    rows_carry_division = "division" in mapping.values()
     title_equipment = _equipment_in_text(blob)
     deadlift_only = len(layout.attempts) in {3, 4} and _mentions_deadlift(blob)
     for row in rows[header_index + 1 :]:
@@ -209,7 +213,7 @@ def _parse_table(title, rows):
                 weight_class = ""
                 ignoring = False
                 continue
-            ignoring = label
+            ignoring = label if not rows_carry_division else False
             continue
         if not _is_place(_mapped(row, mapping, "place")):
             continue

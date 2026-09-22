@@ -523,3 +523,19 @@ class HttpsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("max-age=31536000", response["Strict-Transport-Security"])
         self.assertIn("includeSubDomains", response["Strict-Transport-Security"])
+
+
+class SectionHeadingTests(TestCase):
+    """A sheet whose rows carry their own Division must not lose them to a
+    heading the label parser cannot read (real file: Кърджали 2023)."""
+
+    def test_decorative_headings_do_not_swallow_the_rows(self):
+        data = (Path(__file__).parent / "tests_data" / "opl_sections_2023.xlsx").read_bytes()
+        parsed = parse_upload("k.xlsx", data)
+        self.assertEqual(len(parsed.rows), 87)
+        self.assertEqual(parsed.skipped, 0)
+
+    def test_a_context_dependent_sheet_still_drops_unknown_blocks(self):
+        data = (Path(__file__).parent / "tests_data" / "goodlift_bench_2026.xlsx").read_bytes()
+        parsed = parse_upload("b.xlsx", data)
+        self.assertEqual(parsed.skipped, 57)
