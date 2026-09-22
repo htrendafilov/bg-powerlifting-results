@@ -8,7 +8,7 @@
       {% for competition in group.competitions %}
         <li>
           <a href="{% url 'competition_detail' competition.slug %}">{{ competition.name }}</a>
-          <span>{{ competition.start_date|date:"d.m.Y" }}{% if competition.city %} · {{ competition.city }}{% endif %} · {{ competition.get_level_display }}</span>
+          <span>{{ competition.start_date|date:"d.m.Y" }}{% if competition.city %} · {{ competition.city }}{% endif %} · {{ competition.get_level_display }}{% if competition.protocol_label %} · <em class="missing">{{ competition.protocol_label }}</em>{% endif %}</span>
         </li>
       {% endfor %}
     </ul>

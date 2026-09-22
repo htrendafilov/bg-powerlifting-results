@@ -154,6 +154,15 @@ class Competition(models.Model):
     def __str__(self):
         return f"{self.name} ({self.start_date.year})"
 
+    def protocol_label(self):
+        file_count = getattr(self, "file_count", None)
+        has_files = file_count > 0 if file_count is not None else self.files.exists()
+        if has_files:
+            return ""
+        if self.start_date > date.today():
+            return "Още не е проведено"
+        return "Няма протокол"
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = unique_slug(Competition, transliterate(f"{self.name}-{self.start_date.year}"))

@@ -11,6 +11,26 @@ from archive.services.names import athlete_name_key, transliterate
 from archive.services.records import recalculate_records
 
 
+class MissingProtocolTests(TestCase):
+    def test_past_meet_without_file_says_there_is_no_protocol(self):
+        Competition.objects.create(
+            name="Без протокол",
+            start_date=date(2023, 5, 27),
+            city="София",
+            slug="test-missing",
+        )
+        listing = self.client.get("/sustezaniya/")
+        self.assertContains(listing, "Няма протокол")
+        detail = self.client.get("/sustezaniya/test-missing/")
+        self.assertContains(detail, "Няма протокол")
+
+    def test_future_meet_is_marked_as_not_held_yet(self):
+        Competition.objects.create(name="Предстои", start_date=date(2026, 11, 1), slug="test-future")
+        detail = self.client.get("/sustezaniya/test-future/")
+        self.assertContains(detail, "Още не е проведено")
+        self.assertNotContains(detail, "Няма протокол")
+
+
 class NameTests(TestCase):
     def test_home_page(self):
         response = self.client.get("/")

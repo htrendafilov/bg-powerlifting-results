@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -37,7 +37,7 @@ CLASS_LISTS = {
 
 
 def home(request):
-    competitions = Competition.objects.all()[:8]
+    competitions = Competition.objects.annotate(file_count=Count("files"))[:8]
     return render(
         request,
         "archive/home.html",
@@ -50,7 +50,7 @@ def home(request):
 
 
 def competition_list(request):
-    competitions = Competition.objects.all()
+    competitions = Competition.objects.annotate(file_count=Count("files"))
     by_year = []
     for competition in competitions:
         year = competition.start_date.year
@@ -62,6 +62,7 @@ def competition_list(request):
 
 def competition_detail(request, slug):
     competition = get_object_or_404(Competition, slug=slug)
+    has_any_results = competition.results.exists()
     results = competition.results.select_related("athlete")
     sex = request.GET.get("sex", "")
     age_group = request.GET.get("age", "")
@@ -84,6 +85,7 @@ def competition_detail(request, slug):
             "results": results,
             "show_squat": any(result.best_squat or result.squat1 for result in results),
             "show_deadlift": any(result.best_deadlift or result.deadlift1 for result in results),
+            "has_any_results": has_any_results,
             "filters": {
                 "sex": Sex,
                 "age": AgeGroup,

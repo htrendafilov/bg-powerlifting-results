@@ -30,6 +30,7 @@
     </ul>
   {% endif %}
 
+  {% if has_any_results %}
   <form class="filters" method="get">
     <label>Пол
       <select name="sex">
@@ -65,6 +66,7 @@
     </label>
     <button type="submit">Филтрирай</button>
   </form>
+  {% endif %}
 
   {% if results %}
     <div class="table-wrap">
@@ -113,7 +115,11 @@
         </tbody>
       </table>
     </div>
+  {% elif has_any_results %}
+    <p>Няма редове за този филтър.</p>
+  {% elif competition.files.all %}
+    <p>Протоколът е качен. Резултатите още не са въведени.</p>
   {% else %}
-    <p>За този турнир още няма въведени редове. Файловете по-горе са източникът.</p>
+    <p class="missing">{{ competition.protocol_label }}</p>
   {% endif %}
 {% endblock %}

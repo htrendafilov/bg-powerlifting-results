@@ -66,6 +66,8 @@ h2 { font-size: 1.15rem; margin: 28px 0 8px; }
 
 .meet-list span, .file-list span { color: var(--muted); }
 
+.missing { color: var(--rust); font-style: normal; font-weight: 600; }
+
 .file-list img { display: block; max-width: min(100%, 280px); height: auto; border: 1px solid var(--line); }
 
 .photos { display: flex; flex-wrap: wrap; gap: 16px; }
