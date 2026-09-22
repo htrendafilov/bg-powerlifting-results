@@ -946,3 +946,27 @@ class CompetitionLevelFilterTests(TestCase):
     def test_the_chosen_level_stays_selected(self):
         page = self.client.get("/competitions/?level=international")
         self.assertContains(page, 'value="international" selected')
+
+
+class MergeNamePreferenceTests(TestCase):
+    def test_a_name_from_a_protocol_beats_a_converted_one(self):
+        converted = Athlete.objects.create(
+            name_bg="Роберт Михаилов", name_lat="Robert Mihailov", sex=Sex.M, name_bg_auto=True
+        )
+        from_protocol = Athlete.objects.create(
+            name_bg="Роберт Михайлов", name_lat="Robert Mihaylov", sex=Sex.M
+        )
+        merge_athletes(converted, [from_protocol])
+        converted.refresh_from_db()
+        self.assertEqual(converted.name_bg, "Роберт Михайлов")
+        self.assertFalse(converted.name_bg_auto)
+
+    def test_a_protocol_name_is_not_replaced_by_a_converted_one(self):
+        from_protocol = Athlete.objects.create(name_bg="Роберт Михайлов", sex=Sex.M)
+        converted = Athlete.objects.create(
+            name_bg="Роберт Михаилов", name_lat="Robert Mihailov", sex=Sex.M, name_bg_auto=True
+        )
+        merge_athletes(from_protocol, [converted])
+        from_protocol.refresh_from_db()
+        self.assertEqual(from_protocol.name_bg, "Роберт Михайлов")
+        self.assertFalse(from_protocol.name_bg_auto)

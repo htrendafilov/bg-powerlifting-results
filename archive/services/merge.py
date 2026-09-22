@@ -39,6 +39,10 @@ def merge_athletes(target, others, *, recalculate=True):
 
 
 def _fill_gaps(target, other):
+    # A name read from a Bulgarian protocol beats one converted from Latin.
+    if target.name_bg_auto and other.name_bg and not other.name_bg_auto:
+        target.name_bg = other.name_bg
+        target.name_bg_auto = False
     for field in ("name_bg", "name_lat", "birth_year"):
         if not getattr(target, field) and getattr(other, field):
             setattr(target, field, getattr(other, field))
