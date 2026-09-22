@@ -500,12 +500,37 @@ class DeadliftOnlyTests(TestCase):
         sheet.append(["- 93 kg"])
         sheet.append([1, "Ivanov Ivan", "Levski", 92.5, 250, 265, 280, 280, 90.1])
         row = parse_upload("dl.xlsx", _bytes(workbook)).rows[0]
-        self.assertTrue(any("мъртва тяга" in problem for problem in row.errors))
-        _, blocked = prepare_rows(
-            parse_upload("dl.xlsx", _bytes(workbook)),
-            default_sex=Sex.M, default_equipment=Equipment.CLASSIC, default_event="auto",
+        self.assertEqual(row.event, Event.D)
+        self.assertEqual(row.best_deadlift, 280)
+        self.assertIsNone(row.best_bench)
+        self.assertEqual(row.attempts["deadlift3"], 280)
+        self.assertNotIn("bench1", row.attempts)
+
+    def test_a_deadlift_result_never_becomes_a_record(self):
+        athlete = Athlete.objects.create(name_bg="Тягаджия", sex=Sex.M)
+        competition = Competition.objects.create(name="Тяга", start_date=date(2026, 11, 26))
+        Result.objects.create(
+            competition=competition, athlete=athlete, sex=Sex.M, age_group=AgeGroup.OPEN,
+            equipment=Equipment.CLASSIC, event=Event.D, weight_class="93",
+            country="България", best_deadlift=400,
         )
-        self.assertEqual(len(blocked), 1)
+        recalculate_records()
+        self.assertEqual(Record.objects.count(), 0)
+
+    def test_a_meet_can_be_excluded_from_records_by_hand(self):
+        athlete = Athlete.objects.create(name_bg="Показен", sex=Sex.M)
+        competition = Competition.objects.create(name="Показен", start_date=date(2026, 3, 1))
+        result = Result.objects.create(
+            competition=competition, athlete=athlete, sex=Sex.M, age_group=AgeGroup.OPEN,
+            equipment=Equipment.CLASSIC, event=Event.SBD, weight_class="93",
+            country="България", best_bench=250, counts_for_records=False,
+        )
+        recalculate_records()
+        self.assertEqual(Record.objects.count(), 0)
+        result.counts_for_records = True
+        result.save()
+        recalculate_records()
+        self.assertEqual(Record.objects.filter(lift=Lift.BENCH, value_kg=250).count(), 1)
 
 
 @override_settings(
@@ -539,3 +564,58 @@ class SectionHeadingTests(TestCase):
         data = (Path(__file__).parent / "tests_data" / "goodlift_bench_2026.xlsx").read_bytes()
         parsed = parse_upload("b.xlsx", data)
         self.assertEqual(parsed.skipped, 57)
+
+
+class BulgarianProtocolTests(TestCase):
+    """The shape the federation publishes most often: a Bulgarian header row."""
+
+    def _fixture(self, name):
+        return (Path(__file__).parent / "tests_data" / name).read_bytes()
+
+    def test_bulgarian_headers_are_read(self):
+        parsed = parse_upload("sofia.xlsx", self._fixture("bg_sbd_2024.xlsx"))
+        self.assertEqual(len(parsed.rows), 170)
+        ready, blocked = prepare_rows(
+            parsed, default_sex="", default_equipment="auto", default_event="auto"
+        )
+        self.assertEqual((len(ready), len(blocked)), (170, 0))
+        row = parsed.rows[0]
+        self.assertTrue(row.raw_name)
+        self.assertTrue(row.club)
+        self.assertEqual(row.event, Event.SBD)
+
+    def test_a_combined_division_code_supplies_sex_equipment_and_event(self):
+        parsed = parse_upload("sofia.xlsx", self._fixture("bg_sbd_2024.xlsx"))
+        by_sex = Counter(row.sex for row in parsed.rows)
+        self.assertEqual(by_sex[Sex.F], 34)
+        self.assertEqual(by_sex[Sex.M], 136)
+        self.assertEqual({row.equipment for row in parsed.rows}, {Equipment.CLASSIC})
+        self.assertEqual({row.equipment_source for row in parsed.rows}, {"row"})
+
+    def test_a_deadlift_meet_is_imported_but_sets_no_record(self):
+        parsed = parse_upload("dl.xlsx", self._fixture("bg_deadlift_2023.xlsx"))
+        self.assertEqual({row.event for row in parsed.rows}, {Event.D})
+        ready, _ = prepare_rows(
+            parsed, default_sex="", default_equipment="auto", default_event="auto"
+        )
+        competition = Competition.objects.create(
+            name="Мъртва тяга", start_date=date(2023, 11, 26), slug="dl-2023"
+        )
+        summary = apply_import(
+            competition, parsed, default_sex="", default_equipment="auto",
+            default_event="auto", replace=True,
+        )
+        self.assertEqual(summary["created"], 0)  # blocked rows stop the whole import
+        self.assertGreater(len(ready), 60)
+        self.assertEqual(Record.objects.count(), 0)
+
+
+class MergedDivisionCodeTests(TestCase):
+    def test_sex_prefixed_divisions_are_understood(self):
+        from archive.services.importers import _division_label
+
+        self.assertEqual(_division_label("F-Jr"), AgeGroup.JUNIOR)
+        self.assertEqual(_division_label("M-O"), AgeGroup.OPEN)
+        self.assertEqual(_division_label("M-T3"), AgeGroup.SUBJUNIOR)
+        self.assertEqual(_division_label("M-M1"), AgeGroup.M1)
+        self.assertEqual(_division_label("M1"), AgeGroup.M1)

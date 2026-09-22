@@ -106,7 +106,7 @@ def prepare_rows(parsed, *, default_sex, default_equipment, default_event, meet_
             problems.append("Няма възрастова група.")
         if not item.equipment:
             problems.append("Няма екипировка. Изборът „с и без екип“ трябва да се направи в импорта.")
-        if item.event not in {Event.SBD, Event.B}:
+        if item.event not in set(Event.values):
             problems.append("Няма дисциплина.")
         if not item.weight_class and item.place not in {"NS", "DQ", "DD", "G"}:
             problems.append("Няма категория.")

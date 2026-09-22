@@ -49,6 +49,58 @@ _HEADER_ALIASES = {
     "weight": "bodyweight",
     "lot": "lot",
     "nation": "nation",
+    # Bulgarian protocols. The federation's spelling drifts between meets, so
+    # every variant seen in the published files is listed rather than guessed.
+    "място": "place",
+    "класиране": "place",
+    "no": "place",
+    "име": "name",
+    "имеифамилия": "name",
+    "фамилия": "surname",
+    "пол": "sex",
+    "отбор": "club",
+    "клуб": "club",
+    "дивизия": "division",
+    "възрастовагрупа": "division",
+    "екипировка": "equipment",
+    "тегло": "bodyweight",
+    "личнотегло": "bodyweight",
+    "теглокг": "bodyweight",
+    "категория": "weight_class",
+    "категориякг": "weight_class",
+    "теглкат": "weight_class",
+    "кат": "weight_class",
+    "клек1": "squat1",
+    "клек2": "squat2",
+    "клек3": "squat3",
+    "клек": "best_squat",
+    "найдобрклек": "best_squat",
+    "найдобклек": "best_squat",
+    "лег1": "bench1",
+    "лег2": "bench2",
+    "лег3": "bench3",
+    "лег": "best_bench",
+    "найдобрлег": "best_bench",
+    "найдоблег": "best_bench",
+    "тяга1": "deadlift1",
+    "тяга2": "deadlift2",
+    "тяга3": "deadlift3",
+    "мтяга1": "deadlift1",
+    "мтяга2": "deadlift2",
+    "мтяга3": "deadlift3",
+    "тяга1виопит": "deadlift1",
+    "тяга2риопит": "deadlift2",
+    "тяга3тиопит": "deadlift3",
+    "тяга": "best_deadlift",
+    "найдобрамтяга": "best_deadlift",
+    "найдобмтяга": "best_deadlift",
+    "найдобратяга": "best_deadlift",
+    "тотал": "total",
+    "тоталкг": "total",
+    "трибой": "total",
+    "точки": "points",
+    "glточки": "points",
+    "ipfglточки": "points",
 }
 
 
@@ -105,6 +157,7 @@ class ParsedFile:
     errors: list = field(default_factory=list)
     skipped: int = 0
     skipped_sections: list = field(default_factory=list)
+    duplicates: int = 0
 
 
 @dataclass
@@ -115,6 +168,7 @@ class HeaderLayout:
     mapping: dict = field(default_factory=dict)
     attempts: list = field(default_factory=list)
     results: list = field(default_factory=list)
+    divisions: list = field(default_factory=list)
 
 
 def parse_upload(filename, payload):
@@ -141,8 +195,37 @@ def parse_upload(filename, payload):
             for label in extra.skipped_sections:
                 if label not in merged.skipped_sections:
                     merged.skipped_sections.append(label)
+        merged.duplicates = _drop_duplicate_rows(merged.rows)
         return merged
     return ParsedFile(kind="", errors=["Приемат се .xlsx и .csv. Стар .xls се качва като файл към турнира и се нанася отделно."])
+
+
+# Workbooks often keep the same protocol on several sheets ("protokol" and
+# "protokol (2)", "Scoresheet" and "Scoresheet (2)"). The same lifter in two
+# divisions is legitimate, so the division is part of what makes a row distinct.
+def _drop_duplicate_rows(rows):
+    seen = set()
+    kept = []
+    for item in rows:
+        key = (
+            item.raw_name.strip().lower(),
+            item.sex,
+            item.age_group,
+            item.equipment,
+            item.event,
+            item.weight_class,
+            item.best_squat,
+            item.best_bench,
+            item.best_deadlift,
+            item.total,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(item)
+    dropped = len(rows) - len(kept)
+    rows[:] = kept
+    return dropped
 
 
 def _clean_row(row):
@@ -189,14 +272,17 @@ def _parse_table(title, rows):
     # Dropping a block is only safe when the rows need the heading to be read at
     # all. A sheet carrying its own Division column does not: there the headings
     # are decoration and an unknown one must not take the rows with it.
-    rows_carry_division = "division" in mapping.values()
+    rows_carry_division = bool(layout.divisions)
+    sheet_event = _event_from_columns(mapping) if kind == "opl" else ""
     title_equipment = _equipment_in_text(blob)
     deadlift_only = len(layout.attempts) in {3, 4} and _mentions_deadlift(blob)
     for row in rows[header_index + 1 :]:
         if not any(row):
             continue
+        # A row with a single filled cell is never a result: a result has a
+        # name. Weight-class headings like "47.0" would otherwise read as a rank.
         label = _single_label(row)
-        if label and not _is_place(label):
+        if label:
             found_sex = _sex_label(label)
             found_class = normalize_weight_class(label)
             found_division = _division_label(label)
@@ -213,7 +299,8 @@ def _parse_table(title, rows):
                 weight_class = ""
                 ignoring = False
                 continue
-            ignoring = label if not rows_carry_division else False
+            if not _is_place(label):
+                ignoring = label if not rows_carry_division else False
             continue
         if not _is_place(_mapped(row, mapping, "place")):
             continue
@@ -224,6 +311,7 @@ def _parse_table(title, rows):
             continue
         item = _row_from_mapping(row, mapping, layout, kind)
         item.age_group = item.age_group or division
+        item.event = item.event or sheet_event
         item.sex = item.sex or sex
         item.weight_class = item.weight_class or weight_class
         if not item.equipment and title_equipment:
@@ -233,7 +321,11 @@ def _parse_table(title, rows):
         # The attempt-column count already decided the lifts; the title is only
         # consulted for the one case it cannot tell apart from a bench sheet.
         if deadlift_only:
-            item.errors.append("Лист само за мъртва тяга. Дисциплината още не се поддържа.")
+            item.attempts = {
+                key.replace("bench", "deadlift"): value for key, value in item.attempts.items()
+            }
+            item.best_deadlift, item.best_bench = item.best_bench, None
+            item.event = Event.D
         if not item.raw_name:
             item.errors.append("Липсва име.")
         parsed.rows.append(item)
@@ -263,10 +355,21 @@ def _assign_nation(rows):
 def _find_header(rows):
     for index, row in enumerate(rows[:40]):
         normalized = [_norm_header(cell) for cell in row]
-        if "name" not in normalized:
+        fields = {_HEADER_ALIASES.get(cell) for cell in normalized}
+        if "place" not in fields:
             continue
-        if "place" in normalized or "pl" in normalized:
-            return index, _header_layout(normalized)
+        layout = _header_layout(normalized)
+        if "name" in fields:
+            return index, layout
+        # Some protocols leave the heading above the names empty. Accept the
+        # column next to the rank, but only in a row that is clearly a header.
+        if len(layout.mapping) < 4:
+            continue
+        place_index = next(i for i, name in layout.mapping.items() if name == "place")
+        candidate = place_index + 1
+        if candidate < len(normalized) and not normalized[candidate] and candidate not in layout.mapping:
+            layout.mapping[candidate] = "name"
+            return index, layout
     return None, HeaderLayout()
 
 
@@ -282,13 +385,17 @@ def _header_layout(normalized):
         if field_name == "result":
             layout.results.append(index)
             continue
+        if field_name == "division":
+            layout.divisions.append(index)
+            continue
         if field_name not in layout.mapping.values():
             layout.mapping[index] = field_name
     return layout
 
 
 def _norm_header(value):
-    return re.sub(r"[^a-z0-9а-я]", "", (value or "").lower())
+    text = (value or "").lower().replace("№", "no")
+    return re.sub(r"[^a-z0-9а-я]", "", text)
 
 
 def _metadata(rows):
@@ -344,7 +451,7 @@ def _row_from_mapping(row, mapping, layout, kind):
         raw_name=_mapped(row, mapping, "name"),
         sex=_sex_label(_mapped(row, mapping, "sex")) or "",
         country=_mapped(row, mapping, "country"),
-        age_group=_division_label(_mapped(row, mapping, "division")) or "",
+
         equipment=row_equipment,
         equipment_source="row" if row_equipment else "",
         event=_event_code(_mapped(row, mapping, "event")),
@@ -355,6 +462,8 @@ def _row_from_mapping(row, mapping, layout, kind):
         lot=_mapped(row, mapping, "lot"),
         points=_decimal(_mapped(row, mapping, "points")),
     )
+    for index in layout.divisions:
+        _apply_division(item, _cell(row, index))
     if kind == "opl":
         for name in (
             "squat1",
@@ -375,8 +484,6 @@ def _row_from_mapping(row, mapping, layout, kind):
         item.best_bench = _positive(_mapped(row, mapping, "best_bench")) or _best_of(item, "bench")
         item.best_deadlift = _positive(_mapped(row, mapping, "best_deadlift")) or _best_of(item, "deadlift")
         item.total = _positive(_mapped(row, mapping, "total"))
-        if not item.event:
-            item.event = Event.SBD if item.best_squat is not None or item.best_deadlift is not None else Event.B
     else:
         blocks = _ATTEMPT_BLOCKS.get(len(layout.attempts))
         if blocks is None:
@@ -472,6 +579,9 @@ def _division_label(value):
     if not text:
         return ""
     table = {
+        "t1": AgeGroup.SUBJUNIOR,
+        "t2": AgeGroup.SUBJUNIOR,
+        "t3": AgeGroup.SUBJUNIOR,
         "sjr": AgeGroup.SUBJUNIOR,
         "subjunior": AgeGroup.SUBJUNIOR,
         "subjuniors": AgeGroup.SUBJUNIOR,
@@ -506,7 +616,34 @@ def _division_label(value):
         "masters4": AgeGroup.M4,
         "ветерани4": AgeGroup.M4,
     }
-    return table.get(text, "")
+    if text in table:
+        return table[text]
+    # Protocols exported from OpenPowerlifting glue the sex onto the division:
+    # "F-Jr", "M-O", "M-T3". The sex already has its own column.
+    if len(text) > 1 and text[0] in "fmw" and text[1:] in table:
+        return table[text[1:]]
+    return ""
+
+
+# OpenPowerlifting-style division codes such as "M-CL-PL" carry the sex, the
+# equipment and the discipline in one cell, alongside a plain age division.
+_CODE_EQUIPMENT = {"CL": Equipment.CLASSIC, "R": Equipment.CLASSIC, "RAW": Equipment.CLASSIC,
+                   "EQ": Equipment.EQUIPPED, "SP": Equipment.EQUIPPED}
+_CODE_EVENT = {"PL": Event.SBD, "BP": Event.B, "DL": Event.D, "PP": Event.PP}
+
+
+def _apply_division(item, value):
+    text = (value or "").strip().upper()
+    match = re.fullmatch(r"([FMW])-([A-Z]{1,3})-([A-Z]{2})", text)
+    if match:
+        sex, equipment, event = match.groups()
+        item.sex = item.sex or (Sex.F if sex in "FW" else Sex.M)
+        if not item.equipment and equipment in _CODE_EQUIPMENT:
+            item.equipment = _CODE_EQUIPMENT[equipment]
+            item.equipment_source = "row"
+        item.event = item.event or _CODE_EVENT.get(event, "")
+        return
+    item.age_group = item.age_group or _division_label(value)
 
 
 def _looks_like_class_label(value):
@@ -556,6 +693,23 @@ def _event_in_text(value):
 def _mentions_deadlift(value):
     text = (value or "").lower()
     return "мъртва тяга" in text or "deadlift" in text
+
+
+# Which lifts a meet contested is a property of the sheet's columns, not of one
+# row: a lifter who fails all three squats still competed in a full-power meet.
+def _event_from_columns(mapping):
+    def has(lift):
+        names = {f"{lift}{n}" for n in range(1, 5)} | {f"best_{lift}"}
+        return bool(names & set(mapping.values()))
+
+    squat, bench, deadlift = has("squat"), has("bench"), has("deadlift")
+    if squat and bench and deadlift:
+        return Event.SBD
+    if bench and deadlift:
+        return Event.PP
+    if deadlift:
+        return Event.D
+    return Event.B
 
 
 def _event_code(value):

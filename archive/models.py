@@ -30,6 +30,13 @@ class Equipment(models.TextChoices):
 class Event(models.TextChoices):
     SBD = "SBD", "Трибой"
     B = "B", "Лег"
+    D = "D", "Тяга"
+    PP = "PP", "Лег и тяга"
+
+
+# Only the two IPF disciplines carry records. A deadlift-only or push-pull meet
+# is archived and shown, but never sets a national record.
+RECORD_EVENTS = {Event.SBD, Event.B}
 
 
 class Lift(models.TextChoices):
@@ -195,6 +202,11 @@ class Result(models.Model):
     age_group = models.CharField("Възраст", max_length=12, choices=AgeGroup.choices)
     equipment = models.CharField("Екипировка", max_length=12, choices=Equipment.choices)
     event = models.CharField("Дисциплина", max_length=3, choices=Event.choices)
+    counts_for_records = models.BooleanField(
+        "Брои се за рекорди",
+        default=True,
+        help_text="Изключва се за показни и непълни стартове, които не трябва да влизат в рекордите.",
+    )
     weight_class = models.CharField("Категория", max_length=16)
     bodyweight = models.DecimalField("Тегло", max_digits=5, decimal_places=2, null=True, blank=True)
     place = models.CharField("Място", max_length=8, blank=True)
@@ -234,6 +246,8 @@ class Result(models.Model):
 
     @property
     def counts_for_bulgarian_records(self):
+        if not self.counts_for_records or self.event not in RECORD_EVENTS:
+            return False
         if (self.place or "").strip().upper() == "DD":
             return False
         country = (self.country or "").strip().lower()
