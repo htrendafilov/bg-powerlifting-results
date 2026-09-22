@@ -4,7 +4,15 @@ from django.shortcuts import redirect, render
 from django.urls import path, reverse
 from django.utils.html import format_html
 
-from archive.models import Athlete, AthletePhoto, Competition, CompetitionFile, Record, Result
+from archive.models import (
+    Athlete,
+    AthletePhoto,
+    Competition,
+    CompetitionFile,
+    Record,
+    Result,
+    SiteSettings,
+)
 from archive.services.merge import duplicate_candidates, merge_athletes
 
 
@@ -160,3 +168,18 @@ class RecordAdmin(admin.ModelAdmin):
     list_filter = ("origin", "sex", "age_group", "equipment", "event", "lift")
     search_fields = ("athlete__name_bg", "athlete__name_lat", "note", "weight_class")
     autocomplete_fields = ("athlete", "result")
+
+
+@admin.register(SiteSettings)
+class SiteSettingsAdmin(admin.ModelAdmin):
+    """A single row, so adding and deleting are off."""
+
+    def has_add_permission(self, request):
+        return not SiteSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        SiteSettings.load()
+        return super().changelist_view(request, extra_context)

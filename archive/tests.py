@@ -10,11 +10,12 @@ from django.test import TestCase, override_settings
 
 from archive.models import (
     AgeGroup, Athlete, AthletePhoto, Competition, Equipment, Event, Lift, MeetLevel,
-    Record, RecordOrigin, Result, Sex,
+    Record, RecordOrigin, Result, Sex, SiteSettings,
 )
 from archive.services.commit import apply_import, prepare_rows
 from archive.services.importers import _equipment_in_text, parse_upload
 from archive.services.merge import duplicate_candidates, merge_athletes
+from archive.services.visibility import visible_athletes, visible_competitions, visible_results
 from archive.services.names import athlete_name_key, reverse_transliterate, transliterate
 from archive.services.records import recalculate_records
 
@@ -831,3 +832,117 @@ class BulgarianNameTests(TestCase):
         Athlete.objects.create(name_lat="Ivaylo Hristov", sex=Sex.M)
         call_command("bulgarize_names", verbosity=0)
         self.assertEqual(Athlete.objects.filter(name_bg_auto=True).count(), 1)
+
+
+class OldWeightClassTests(TestCase):
+    def setUp(self):
+        self.old_meet = Competition.objects.create(
+            name="Старо", start_date=date(2005, 5, 1), slug="staro"
+        )
+        self.new_meet = Competition.objects.create(
+            name="Ново", start_date=date(2025, 5, 1), slug="novo"
+        )
+        self.empty_meet = Competition.objects.create(
+            name="Без протокол", start_date=date(2024, 5, 1), slug="bez"
+        )
+        self.old_lifter = self._result(self.old_meet, "Стар", Sex.M, "82.5")
+        self.new_lifter = self._result(self.new_meet, "Нов", Sex.M, "83")
+        self.both = self._result(self.new_meet, "И двете", Sex.M, "93")
+        self._result(self.old_meet, "И двете", Sex.M, "90", athlete=self.both.athlete)
+
+    def _result(self, competition, name, sex, weight_class, athlete=None):
+        athlete = athlete or Athlete.objects.create(name_bg=name, sex=sex)
+        return Result.objects.create(
+            competition=competition, athlete=athlete, raw_name=name, sex=sex,
+            age_group=AgeGroup.OPEN, equipment=Equipment.CLASSIC, event=Event.SBD,
+            weight_class=weight_class, country="България", best_bench=100,
+        )
+
+    def _show(self, value):
+        settings_row = SiteSettings.load()
+        settings_row.show_old_weight_classes = value
+        settings_row.save()
+
+    def test_old_classes_are_hidden_by_default(self):
+        self.assertFalse(SiteSettings.load().show_old_weight_classes)
+        self.assertEqual(visible_results().count(), 2)
+
+    def test_a_meet_held_only_in_old_classes_disappears(self):
+        visible = visible_competitions(Competition.objects.all())
+        self.assertNotIn(self.old_meet, visible)
+        self.assertIn(self.new_meet, visible)
+        self.assertEqual(self.client.get("/competitions/staro/").status_code, 404)
+
+    def test_a_meet_with_no_results_at_all_stays(self):
+        self.assertIn(self.empty_meet, visible_competitions(Competition.objects.all()))
+
+    def test_a_lifter_seen_only_in_old_classes_disappears(self):
+        visible = visible_athletes(Athlete.objects.all())
+        self.assertNotIn(self.old_lifter.athlete, visible)
+        self.assertIn(self.new_lifter.athlete, visible)
+        self.assertEqual(self.client.get(f"/athletes/{self.old_lifter.athlete.slug}/").status_code, 404)
+
+    def test_a_lifter_who_spans_both_keeps_only_the_current_starts(self):
+        page = self.client.get(f"/athletes/{self.both.athlete.slug}/")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Ново")
+        self.assertNotContains(page, "Старо")
+
+    def test_the_records_table_drops_the_old_classes(self):
+        recalculate_records()
+        page = self.client.get("/records/?sex=M&age_group=open&equipment=classic&event=SBD")
+        self.assertNotContains(page, "<td>82.5</td>", html=False)
+        self.assertContains(page, "83")
+
+    def test_turning_the_setting_on_brings_everything_back(self):
+        self._show(True)
+        self.assertEqual(visible_results().count(), 4)
+        self.assertIn(self.old_meet, visible_competitions(Competition.objects.all()))
+        self.assertIn(self.old_lifter.athlete, visible_athletes(Athlete.objects.all()))
+        self.assertEqual(self.client.get("/competitions/staro/").status_code, 200)
+
+    def test_a_womens_52_is_current_while_a_mens_52_is_not(self):
+        woman = self._result(self.new_meet, "Жена", Sex.F, "52")
+        man = self._result(self.new_meet, "Мъж", Sex.M, "52")
+        visible = set(visible_results().values_list("pk", flat=True))
+        self.assertIn(woman.pk, visible)
+        self.assertNotIn(man.pk, visible)
+
+    def test_a_row_without_a_weight_class_stays_visible(self):
+        missed = self._result(self.new_meet, "Неявил се", Sex.M, "")
+        self.assertIn(missed.pk, set(visible_results().values_list("pk", flat=True)))
+
+    def test_only_one_settings_row_can_exist(self):
+        SiteSettings.objects.create(show_old_weight_classes=True)
+        SiteSettings.objects.create(show_old_weight_classes=False)
+        self.assertEqual(SiteSettings.objects.count(), 1)
+
+
+class CompetitionLevelFilterTests(TestCase):
+    def setUp(self):
+        Competition.objects.create(name="Републиканско", start_date=date(2025, 5, 1),
+                                   slug="nat", level=MeetLevel.NATIONAL)
+        Competition.objects.create(name="Европейско", start_date=date(2025, 6, 1),
+                                   slug="int", level=MeetLevel.INTERNATIONAL)
+
+    def test_the_filter_narrows_to_one_level(self):
+        both = self.client.get("/competitions/")
+        self.assertContains(both, "Републиканско")
+        self.assertContains(both, "Европейско")
+
+        national = self.client.get("/competitions/?level=national")
+        self.assertContains(national, "Републиканско")
+        self.assertNotContains(national, "Европейско")
+
+        international = self.client.get("/competitions/?level=international")
+        self.assertContains(international, "Европейско")
+        self.assertNotContains(international, "Републиканско")
+
+    def test_a_nonsense_level_shows_everything(self):
+        page = self.client.get("/competitions/?level=zzz")
+        self.assertContains(page, "Републиканско")
+        self.assertContains(page, "Европейско")
+
+    def test_the_chosen_level_stays_selected(self):
+        page = self.client.get("/competitions/?level=international")
+        self.assertContains(page, 'value="international" selected')

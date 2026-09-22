@@ -26,6 +26,12 @@ from archive.models import (
 )
 from archive.services.commit import apply_import, decimal_or_blank, prepare_rows
 from archive.services.importers import parse_upload
+from archive.services.visibility import (
+    visible_athletes,
+    visible_competitions,
+    visible_records,
+    visible_results,
+)
 
 SESSION_KEY = "protocol_import"
 
@@ -38,33 +44,43 @@ CLASS_LISTS = {
 
 
 def home(request):
-    competitions = Competition.objects.annotate(file_count=Count("files")).order_by("-start_date", "name")[:8]
+    competitions = visible_competitions(
+        Competition.objects.annotate(file_count=Count("files"))
+    ).order_by("-start_date", "name")[:8]
     return render(
         request,
         "archive/home.html",
         {
             "competitions": competitions,
-            "athlete_count": Athlete.objects.count(),
-            "result_count": Result.objects.count(),
+            "athlete_count": visible_athletes(Athlete.objects.all()).count(),
+            "result_count": visible_results().count(),
         },
     )
 
 
 def competition_list(request):
-    competitions = Competition.objects.annotate(file_count=Count("files")).order_by("-start_date", "name")
+    level = request.GET.get("level", "")
+    competitions = visible_competitions(Competition.objects.annotate(file_count=Count("files")))
+    if level in MeetLevel.values:
+        competitions = competitions.filter(level=level)
+    competitions = competitions.order_by("-start_date", "name")
     by_year = []
     for competition in competitions:
         year = competition.start_date.year
         if not by_year or by_year[-1]["year"] != year:
             by_year.append({"year": year, "competitions": []})
         by_year[-1]["competitions"].append(competition)
-    return render(request, "archive/competition_list.html", {"by_year": by_year})
+    return render(
+        request,
+        "archive/competition_list.html",
+        {"by_year": by_year, "levels": MeetLevel, "selected_level": level},
+    )
 
 
 def competition_detail(request, slug):
-    competition = get_object_or_404(Competition, slug=slug)
-    has_any_results = competition.results.exists()
-    results = competition.results.select_related("athlete")
+    competition = get_object_or_404(visible_competitions(Competition.objects.all()), slug=slug)
+    has_any_results = visible_results(competition.results.all()).exists()
+    results = visible_results(competition.results.select_related("athlete"))
     sex = request.GET.get("sex", "")
     age_group = request.GET.get("age", "")
     equipment = request.GET.get("equipment", "")
@@ -117,7 +133,7 @@ def records(request):
     lifts = [Lift.BENCH] if selected["event"] == Event.B else [Lift.SQUAT, Lift.BENCH, Lift.DEADLIFT, Lift.TOTAL]
     classes = _classes_for(selected)
     current = {}
-    for record in Record.objects.select_related("athlete").filter(
+    for record in visible_records(Record.objects.select_related("athlete")).filter(
         sex=selected["sex"],
         age_group=selected["age_group"],
         equipment=selected["equipment"],
@@ -146,7 +162,7 @@ def records(request):
 def record_history(request):
     fields = ("sex", "age_group", "equipment", "event", "lift", "weight_class")
     filters = {field: request.GET.get(field, "") for field in fields}
-    history = Record.objects.select_related("athlete", "result__competition").filter(
+    history = visible_records(Record.objects.select_related("athlete", "result__competition")).filter(
         **filters,
         origin__in=[RecordOrigin.SEED, RecordOrigin.RESULT],
     )
@@ -160,15 +176,17 @@ def record_history(request):
 
 def athlete_list(request):
     query = request.GET.get("q", "").strip()
-    athletes = Athlete.objects.all()
+    athletes = visible_athletes(Athlete.objects.all())
     if query:
         athletes = athletes.filter(Q(name_bg__icontains=query) | Q(name_lat__icontains=query))
     return render(request, "archive/athlete_list.html", {"athletes": athletes[:200], "query": query})
 
 
 def athlete_detail(request, slug):
-    athlete = get_object_or_404(Athlete, slug=slug)
-    results = athlete.results.select_related("competition").order_by("-competition__start_date")
+    athlete = get_object_or_404(visible_athletes(Athlete.objects.all()), slug=slug)
+    results = visible_results(
+        athlete.results.select_related("competition")
+    ).order_by("-competition__start_date")
     photos = athlete.photos.all() if athlete.allows_public_photos else []
     return render(
         request,
@@ -334,7 +352,7 @@ def _classes_for(selected):
     preset = CLASS_LISTS.get((selected["sex"], selected["age_group"]))
     if preset is None:
         preset = CLASS_LISTS[(selected["sex"], AgeGroup.OPEN)]
-    extras = Record.objects.filter(
+    extras = visible_records(Record.objects.all()).filter(
         sex=selected["sex"],
         age_group=selected["age_group"],
         equipment=selected["equipment"],

@@ -66,6 +66,14 @@ class RecordOrigin(models.TextChoices):
 
 BG_COUNTRIES = {"bg", "bul", "bulgaria", "българия", "бг"}
 
+# The IPF replaced its weight classes on 1 January 2011. Results in the older
+# ones cannot be compared with today's and are hidden unless asked for. The sex
+# matters: 52 kg is a current women's class and an old men's one.
+CURRENT_WEIGHT_CLASSES = {
+    "M": {"53", "59", "66", "74", "83", "93", "105", "120", "120+"},
+    "F": {"43", "47", "52", "57", "63", "69", "76", "84", "84+"},
+}
+
 AGE_RECORD_GROUPS = {
     AgeGroup.SUBJUNIOR: [AgeGroup.SUBJUNIOR, AgeGroup.JUNIOR, AgeGroup.OPEN],
     AgeGroup.JUNIOR: [AgeGroup.JUNIOR, AgeGroup.OPEN],
@@ -316,6 +324,36 @@ class Record(models.Model):
     @property
     def is_current(self):
         return self.valid_to is None and self.origin != RecordOrigin.STANDARD
+
+
+class SiteSettings(models.Model):
+    """One row, edited in the admin, holding what the whole site shows."""
+
+    show_old_weight_classes = models.BooleanField(
+        "Показвай старите тегловни категории",
+        default=False,
+        help_text=(
+            "Категориите до 2011 г. (60, 67.5, 75, 82.5, 90, 100, 110, 125 и др.). "
+            "Изключено: тези резултати, състезания, състезатели и рекорди не се показват."
+        ),
+    )
+
+    class Meta:
+        verbose_name = "Настройка на сайта"
+        verbose_name_plural = "Настройки на сайта"
+
+    def __str__(self):
+        return "Настройки на сайта"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        # Writing a second row overwrites the first rather than failing.
+        kwargs["force_insert"] = False
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        return cls.objects.get_or_create(pk=1)[0]
 
 
 def kg(value):
