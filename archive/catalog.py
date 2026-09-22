@@ -118,6 +118,13 @@ CATALOG = [
         "links": [],
     },
     {
+        "slug": "2023-haskovo-leg",
+        "name": "4 кръг, вдигане от лег с и без екип",
+        "start": date(2023, 10, 7),
+        "city": "Хасково",
+        "links": [],
+    },
+    {
         "slug": "2024-pernik-ekip",
         "name": "Екипировъчен силов трибой",
         "start": date(2024, 4, 13),
