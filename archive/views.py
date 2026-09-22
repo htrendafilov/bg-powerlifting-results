@@ -16,6 +16,7 @@ from archive.models import (
     Competition,
     Equipment,
     Event,
+    FileKind,
     Lift,
     MeetLevel,
     Record,
@@ -84,6 +85,7 @@ def competition_detail(request, slug):
             "competition": competition,
             "results": results,
             "groups": _group_results(results),
+            "scans": [f for f in competition.files.all() if f.kind == FileKind.SCAN and f.file],
             **_visible_columns(results),
             "has_any_results": has_any_results,
             "filters": {

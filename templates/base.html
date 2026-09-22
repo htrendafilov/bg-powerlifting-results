@@ -8,7 +8,7 @@
   {% load static %}
   <link rel="stylesheet" href="{% static 'archive/site.css' %}">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <header class="site-header">
     <a class="brand" href="{% url 'home' %}">Силов трибой <span>България</span></a>
     <nav>
@@ -42,7 +42,12 @@
         var pane = document.querySelector('.results-pane');
         if (heading) root.style.setProperty('--sex-h', heading.offsetHeight + 'px');
         if (head) root.style.setProperty('--head-h', head.offsetHeight + 'px');
-        if (pane) pane.style.maxHeight = 'calc(100vh - ' + (pane.offsetTop + 32) + 'px)';
+        // Fill the rest of the viewport so the results get the screen rather
+        // than a second scrollbar on the page itself.
+        if (pane) {
+          pane.style.maxHeight = 'none';
+          pane.style.height = Math.max(240, window.innerHeight - pane.offsetTop - 16) + 'px';
+        }
       }
       measure();
       window.addEventListener('resize', measure);

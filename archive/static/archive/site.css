@@ -138,18 +138,33 @@ table.results th { font-size: 0.78rem; letter-spacing: 0.03em; color: var(--mute
   border-bottom: 1px solid var(--line);
 }
 
-.results-pane .sex-group { position: relative; }
+.results-pane .sex-group {
+  position: relative;
+  /* As wide as the table, so the heading band reaches the end of the row
+     instead of stopping at the edge of the visible area. */
+  width: max-content;
+  min-width: 100%;
+}
 
 .results-pane .sex-heading {
   position: sticky;
   top: 0;
   z-index: 3;
   margin: 0;
-  padding: 8px 10px;
+  padding: 8px 0;
   background: var(--ink);
   color: var(--paper);
   font-size: 1rem;
   letter-spacing: 0.04em;
+}
+
+/* The band spans the table; the label itself stays at the left edge of the
+   visible area so it survives horizontal scrolling. */
+.results-pane .sex-heading span {
+  position: sticky;
+  left: 0;
+  display: inline-block;
+  padding: 0 10px;
 }
 
 .results-pane table.results thead th {
@@ -173,3 +188,36 @@ table.results th { font-size: 0.78rem; letter-spacing: 0.03em; color: var(--mute
 }
 
 .results-pane table.results { margin-bottom: 0; }
+
+/* The meet page gives the results as much of the screen as it can: the title
+   block is tightened and the protocol links collapse to one line. */
+body.meet main { padding: 8px 16px 12px; }
+body.meet .site-header { padding: 8px 20px; }
+
+/* Title and the date/city line share a row, and each filter puts its label
+   beside the control, so the chrome above the results stays about one sixth
+   of the screen. */
+body.meet .meet-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 14px;
+  margin-bottom: 6px;
+}
+
+body.meet .meet-head h1 { font-size: 1.3rem; margin: 0; }
+body.meet .meet-head .lead { margin: 0; font-size: 0.88rem; }
+body.meet .filters { padding: 6px 0; gap: 6px 14px; }
+body.meet .filters label { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; }
+body.meet .filters select, body.meet .filters button { padding: 3px 6px; font-size: 0.86rem; }
+
+.files-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: baseline;
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+
+.files-label { color: var(--muted); }

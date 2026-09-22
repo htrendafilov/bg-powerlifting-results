@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% load archive_tags %}
 {% block title %}{{ competition.name }}{% endblock %}
+{% block body_class %}meet{% endblock %}
 {% block content %}
+  <div class="meet-head">
   <h1>{{ competition.name }}</h1>
   <p class="lead">
     {{ competition.start_date|date:"d.m.Y" }}
@@ -9,25 +11,17 @@
     {% if competition.city %} · {{ competition.city }}{% endif %}
     · {{ competition.get_level_display }}
   </p>
+  </div>
   {% if competition.notes %}<p>{{ competition.notes }}</p>{% endif %}
 
   {% if competition.files.all %}
-    <h2>Протоколи и файлове</h2>
-    <ul class="file-list">
+    <p class="files-inline">
+      <span class="files-label">Протокол:</span>
       {% for item in competition.files.all %}
-        <li>
-          {% if item.kind == "scan" and item.file %}
-            <a href="{{ item.file.url }}"><img src="{{ item.file.url }}" alt="{{ item.title|default:'Страница от протокол' }}"></a>
-          {% elif item.file %}
-            <a href="{{ item.file.url }}">{{ item.title|default:item.file.name }}</a>
-            <span>{{ item.get_kind_display }}</span>
-          {% elif item.url %}
-            <a href="{{ item.url }}">{{ item.title|default:item.url }}</a>
-            <span>линк</span>
-          {% endif %}
-        </li>
+        {% if item.file %}<a href="{{ item.file.url }}">{{ item.title|default:item.get_kind_display }}</a>
+        {% elif item.url %}<a href="{{ item.url }}">{{ item.title|default:"линк" }}</a>{% endif %}
       {% endfor %}
-    </ul>
+    </p>
   {% endif %}
 
   {% if has_any_results %}
@@ -72,7 +66,7 @@
     <div class="results-pane">
     {% for group in groups %}
       <section class="sex-group">
-      <h2 class="sex-heading">{{ group.label }}</h2>
+      <h2 class="sex-heading"><span>{{ group.label }}</span></h2>
         <table class="results">
           <thead>
             <tr>
@@ -135,5 +129,14 @@
     <p>Протоколът е качен. Резултатите още не са въведени.</p>
   {% else %}
     <p class="missing">{{ competition.protocol_label }}</p>
+  {% endif %}
+
+  {% if scans %}
+    <h2>Страници от протокола</h2>
+    <ul class="file-list">
+      {% for item in scans %}
+        <li><a href="{{ item.file.url }}"><img src="{{ item.file.url }}" alt="{{ item.title|default:'Страница от протокол' }}"></a></li>
+      {% endfor %}
+    </ul>
   {% endif %}
 {% endblock %}

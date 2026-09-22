@@ -662,4 +662,4 @@ class CompetitionLayoutTests(TestCase):
         self.assertNotIn("120 кл.", page)
         self.assertNotIn("120 екип", page)
         self.assertIn("120 кг", page)
-        self.assertIn('class="sex-heading">Жени', page)
+        self.assertIn('class="sex-heading"><span>Жени</span>', page)
