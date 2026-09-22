@@ -83,8 +83,8 @@ def competition_detail(request, slug):
         {
             "competition": competition,
             "results": results,
-            "show_squat": any(result.best_squat or result.squat1 for result in results),
-            "show_deadlift": any(result.best_deadlift or result.deadlift1 for result in results),
+            "groups": _group_results(results),
+            **_visible_columns(results),
             "has_any_results": has_any_results,
             "filters": {
                 "sex": Sex,
@@ -276,6 +276,56 @@ def _competition_from_options(options, parsed):
         city=options["city"],
         level=options["level"],
     )
+
+
+# Sex first, then weight class, the way a protocol is read. Age group and
+# equipment stay as columns rather than further nesting, so one class block
+# holds every division that lifted in it.
+def _visible_columns(results):
+    def used(best, first):
+        return any(getattr(r, best) or getattr(r, first) for r in results)
+
+    columns = {
+        "show_squat": used("best_squat", "squat1"),
+        "show_bench": used("best_bench", "bench1"),
+        "show_deadlift": used("best_deadlift", "deadlift1"),
+        "show_total": any(r.total for r in results),
+    }
+    width = 7  # place, name, club, age, equipment, bodyweight, points
+    width += 3 * sum(columns[key] for key in ("show_squat", "show_bench", "show_deadlift"))
+    width += 1 if columns["show_total"] else 0
+    return {**columns, "column_count": width}
+
+
+def _group_results(results):
+    order = {Sex.F: 0, Sex.M: 1}
+    age_order = {value: index for index, value in enumerate(AgeGroup.values)}
+    ordered = sorted(
+        results,
+        key=lambda r: (
+            order.get(r.sex, 9),
+            _class_key(r.weight_class),
+            age_order.get(r.age_group, 99),
+            _place_key(r.place),
+        ),
+    )
+    groups = []
+    for result in ordered:
+        if not groups or groups[-1]["sex"] != result.sex:
+            groups.append({"sex": result.sex, "label": dict(Sex.choices).get(result.sex, "—"), "classes": []})
+        classes = groups[-1]["classes"]
+        if not classes or classes[-1]["weight_class"] != result.weight_class:
+            classes.append({"weight_class": result.weight_class, "results": []})
+        classes[-1]["results"].append(result)
+    return groups
+
+
+def _place_key(value):
+    text = (value or "").strip().upper()
+    try:
+        return (0, int(text))
+    except ValueError:
+        return (1, 0) if text else (2, 0)
 
 
 def _classes_for(selected):

@@ -619,3 +619,47 @@ class MergedDivisionCodeTests(TestCase):
         self.assertEqual(_division_label("M-T3"), AgeGroup.SUBJUNIOR)
         self.assertEqual(_division_label("M-M1"), AgeGroup.M1)
         self.assertEqual(_division_label("M1"), AgeGroup.M1)
+
+
+class CompetitionLayoutTests(TestCase):
+    def _result(self, competition, name, sex, age_group, weight_class, place, equipment=Equipment.CLASSIC):
+        athlete = Athlete.objects.create(name_bg=name, sex=sex)
+        return Result.objects.create(
+            competition=competition, athlete=athlete, raw_name=name, sex=sex,
+            age_group=age_group, equipment=equipment, event=Event.SBD,
+            weight_class=weight_class, place=place, country="България", best_bench=100,
+        )
+
+    def setUp(self):
+        self.competition = Competition.objects.create(
+            name="Турнир", start_date=date(2026, 4, 3), slug="layout"
+        )
+        self._result(self.competition, "Мъж 120", Sex.M, AgeGroup.OPEN, "120", "1")
+        self._result(self.competition, "Мъж 83", Sex.M, AgeGroup.OPEN, "83", "1")
+        self._result(self.competition, "Жена 84+", Sex.F, AgeGroup.OPEN, "84+", "1")
+        self._result(self.competition, "Жена 84", Sex.F, AgeGroup.OPEN, "84", "1")
+        self._result(self.competition, "Жена 63 юн", Sex.F, AgeGroup.SUBJUNIOR, "63", "2")
+        self._result(self.competition, "Жена 63 отк", Sex.F, AgeGroup.OPEN, "63", "1")
+
+    def test_women_come_first_then_classes_ascending(self):
+        from archive.views import _group_results
+
+        groups = _group_results(list(self.competition.results.select_related("athlete")))
+        self.assertEqual([g["label"] for g in groups], ["Жени", "Мъже"])
+        self.assertEqual([c["weight_class"] for c in groups[0]["classes"]], ["63", "84", "84+"])
+        self.assertEqual([c["weight_class"] for c in groups[1]["classes"]], ["83", "120"])
+
+    def test_a_class_keeps_its_divisions_together(self):
+        from archive.views import _group_results
+
+        groups = _group_results(list(self.competition.results.select_related("athlete")))
+        names = [r.raw_name for r in groups[0]["classes"][0]["results"]]
+        self.assertEqual(names, ["Жена 63 юн", "Жена 63 отк"])
+
+    def test_the_page_separates_equipment_from_the_weight_class(self):
+        page = self.client.get("/competitions/layout/").content.decode()
+        self.assertIn(">Екип.<", page)
+        self.assertNotIn("120 кл.", page)
+        self.assertNotIn("120 екип", page)
+        self.assertIn("120 кг", page)
+        self.assertIn('class="sex-heading">Жени', page)

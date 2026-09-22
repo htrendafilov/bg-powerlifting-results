@@ -31,7 +31,7 @@
   {% endif %}
 
   {% if has_any_results %}
-  <form class="filters" method="get">
+  <form class="filters sticky-filters" method="get">
     <label>Пол
       <select name="sex">
         <option value="">Всички</option>
@@ -68,52 +68,64 @@
   </form>
   {% endif %}
 
-  {% if results %}
-    <div class="table-wrap">
-      <table class="results">
-        <thead>
-          <tr>
-            <th>Място</th>
-            <th>Име</th>
-            <th>Клуб</th>
-            <th>Кат.</th>
-            <th>Възраст</th>
-            <th>Т.т.</th>
-            {% if show_squat %}<th colspan="3">Клек</th>{% endif %}
-            <th colspan="3">Лег</th>
-            {% if show_deadlift %}<th colspan="3">Тяга</th>{% endif %}
-            {% if show_squat %}<th>Тотал</th>{% endif %}
-            <th>Точки</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for result in results %}
+  {% if groups %}
+    <div class="results-pane">
+    {% for group in groups %}
+      <h2 class="sex-heading">{{ group.label }}</h2>
+        <table class="results">
+          <thead>
             <tr>
-              <td>{{ result.place|default:"–" }}</td>
-              <td><a href="{% url 'athlete_detail' result.athlete.slug %}">{{ result.athlete.display_name }}</a></td>
-              <td>{{ result.club|default:"–" }}</td>
-              <td>{{ result.weight_class }}{% if result.equipment == "equipped" %} екип{% else %} кл.{% endif %}</td>
-              <td>{{ result.get_age_group_display }}</td>
-              <td>{{ result.bodyweight|kg }}</td>
-              {% if show_squat %}
-                <td>{% attempt result.squat1 %}</td>
-                <td>{% attempt result.squat2 %}</td>
-                <td>{% attempt result.squat3 %}</td>
-              {% endif %}
-              <td>{% attempt result.bench1 %}</td>
-              <td>{% attempt result.bench2 %}</td>
-              <td>{% attempt result.bench3 %}</td>
-              {% if show_deadlift %}
-                <td>{% attempt result.deadlift1 %}</td>
-                <td>{% attempt result.deadlift2 %}</td>
-                <td>{% attempt result.deadlift3 %}</td>
-              {% endif %}
-              {% if show_squat %}<td>{{ result.total|kg }}</td>{% endif %}
-              <td>{{ result.points|kg }}</td>
+              <th>Място</th>
+              <th>Име</th>
+              <th>Клуб</th>
+              <th>Възраст</th>
+              <th>Екип.</th>
+              <th>Т.т.</th>
+              {% if show_squat %}<th colspan="3">Клек</th>{% endif %}
+              {% if show_bench %}<th colspan="3">Лег</th>{% endif %}
+              {% if show_deadlift %}<th colspan="3">Тяга</th>{% endif %}
+              {% if show_total %}<th>Тотал</th>{% endif %}
+              <th>Точки</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for block in group.classes %}
+              <tr class="class-row">
+                <th colspan="{{ column_count }}">
+                  {% if block.weight_class %}{{ block.weight_class }} кг{% else %}без категория{% endif %}
+                </th>
+              </tr>
+              {% for result in block.results %}
+                <tr>
+                  <td>{{ result.place|default:"–" }}</td>
+                  <td><a href="{% url 'athlete_detail' result.athlete.slug %}">{{ result.athlete.display_name }}</a></td>
+                  <td>{{ result.club|default:"–" }}</td>
+                  <td>{{ result.get_age_group_display }}</td>
+                  <td>{{ result.get_equipment_display }}</td>
+                  <td>{{ result.bodyweight|kg }}</td>
+                  {% if show_squat %}
+                    <td>{% attempt result.squat1 %}</td>
+                    <td>{% attempt result.squat2 %}</td>
+                    <td>{% attempt result.squat3 %}</td>
+                  {% endif %}
+                  {% if show_bench %}
+                    <td>{% attempt result.bench1 %}</td>
+                    <td>{% attempt result.bench2 %}</td>
+                    <td>{% attempt result.bench3 %}</td>
+                  {% endif %}
+                  {% if show_deadlift %}
+                    <td>{% attempt result.deadlift1 %}</td>
+                    <td>{% attempt result.deadlift2 %}</td>
+                    <td>{% attempt result.deadlift3 %}</td>
+                  {% endif %}
+                  {% if show_total %}<td>{{ result.total|kg }}</td>{% endif %}
+                  <td>{{ result.points|kg }}</td>
+                </tr>
+              {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+    {% endfor %}
     </div>
   {% elif has_any_results %}
     <p>Няма редове за този филтър.</p>

@@ -31,5 +31,22 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
+  <script>
+    // The sticky table head sits below the filter row and the sex heading, and
+    // both change height when they wrap, so the offsets are measured, not fixed.
+    (function () {
+      var root = document.documentElement;
+      function measure() {
+        var heading = document.querySelector('.sex-heading');
+        var head = document.querySelector('.results-pane thead th');
+        var pane = document.querySelector('.results-pane');
+        if (heading) root.style.setProperty('--sex-h', heading.offsetHeight + 'px');
+        if (head) root.style.setProperty('--head-h', head.offsetHeight + 'px');
+        if (pane) pane.style.maxHeight = 'calc(100vh - ' + (pane.offsetTop + 32) + 'px)';
+      }
+      measure();
+      window.addEventListener('resize', measure);
+    })();
+  </script>
 </body>
 </html>

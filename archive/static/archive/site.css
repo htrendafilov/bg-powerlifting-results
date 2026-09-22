@@ -114,3 +114,60 @@ table.results th { font-size: 0.78rem; letter-spacing: 0.03em; color: var(--mute
   .site-header { align-items: flex-start; }
   h1 { font-size: 1.45rem; }
 }
+
+/* The results live in one scrolling pane so the filters, the sex heading and
+   the column heads stay put while only the data moves. The pane has to be the
+   scroll container in both axes: a wide table needs horizontal scrolling, and
+   overflow-x:auto forces overflow-y to auto anyway, which would otherwise stop
+   a viewport-sticky head from ever sticking. */
+.results-pane {
+  overflow: auto;
+  max-height: calc(100vh - 14rem);
+  min-height: 300px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  margin-top: 12px;
+}
+
+.sticky-filters {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--paper);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.results-pane .sex-heading {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+}
+
+.results-pane table.results thead th {
+  position: sticky;
+  top: var(--sex-h, 37px);
+  z-index: 2;
+  background: var(--card);
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
+.results-pane table.results tr.class-row th {
+  position: sticky;
+  top: calc(var(--sex-h, 37px) + var(--head-h, 30px));
+  z-index: 1;
+  background: var(--paper);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0;
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
+.results-pane table.results { margin-bottom: 0; }
