@@ -2,7 +2,7 @@
 {% block title %}Импорт{% endblock %}
 {% block content %}
   <h1>Импорт на протокол</h1>
-  <p class="lead">Качва се ексел от Goodlift (лист с опити) или таблица с колони Place, Name, Sex, както е файлът от Свищов 2026. Преди запис има преглед.</p>
+  <p class="lead">Качва се ексел от Goodlift (лист с опити) или таблица с колони Place, Name, Sex, както е файлът от Свищов 2026. Екипировката се избира тук, когато турнирът е „с и без екип“. Преди запис има преглед.</p>
   <form class="stack" method="post" enctype="multipart/form-data">
     {% csrf_token %}
     {{ form.as_p }}

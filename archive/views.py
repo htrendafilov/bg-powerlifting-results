@@ -37,7 +37,7 @@ CLASS_LISTS = {
 
 
 def home(request):
-    competitions = Competition.objects.annotate(file_count=Count("files"))[:8]
+    competitions = Competition.objects.annotate(file_count=Count("files")).order_by("-start_date", "name")[:8]
     return render(
         request,
         "archive/home.html",
@@ -50,7 +50,7 @@ def home(request):
 
 
 def competition_list(request):
-    competitions = Competition.objects.annotate(file_count=Count("files"))
+    competitions = Competition.objects.annotate(file_count=Count("files")).order_by("-start_date", "name")
     by_year = []
     for competition in competitions:
         year = competition.start_date.year
@@ -239,16 +239,17 @@ def import_confirm(request):
 
 def _options_from_form(cleaned, path, filename, parsed):
     start = cleaned.get("start_date") or parsed.meet_date
+    competition = cleaned.get("competition")
     return {
         "path": path,
         "filename": filename,
-        "competition_id": cleaned["competition"].pk if cleaned.get("competition") else None,
+        "competition_id": competition.pk if competition else None,
         "name": cleaned.get("name") or parsed.title or filename,
         "start_date": start.isoformat() if start else "",
         "city": cleaned.get("city") or parsed.city,
-        "level": cleaned.get("level") or MeetLevel.NATIONAL,
+        "level": competition.level if competition else (cleaned.get("level") or MeetLevel.NATIONAL),
         "default_sex": cleaned.get("default_sex") or "",
-        "default_equipment": cleaned.get("default_equipment") or Equipment.CLASSIC,
+        "default_equipment": cleaned.get("default_equipment") or "auto",
         "default_event": cleaned.get("default_event") or "auto",
         "replace": bool(cleaned.get("replace")),
     }
@@ -259,6 +260,7 @@ def _prepare_kwargs(options):
         "default_sex": options["default_sex"],
         "default_equipment": options["default_equipment"],
         "default_event": options["default_event"],
+        "meet_level": options["level"],
     }
 
 

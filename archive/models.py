@@ -237,7 +237,7 @@ class Result(models.Model):
         if (self.place or "").strip().upper() == "DD":
             return False
         country = (self.country or "").strip().lower()
-        return country == "" or country in BG_COUNTRIES
+        return country in BG_COUNTRIES
 
     def successful(self, value):
         if value is None:

@@ -24,9 +24,9 @@ class ImportForm(forms.Form):
         required=False,
     )
     default_equipment = forms.ChoiceField(
-        label="Екипировка, ако я няма във файла",
-        choices=Equipment.choices,
-        initial=Equipment.CLASSIC,
+        label="Екипировка",
+        choices=[("auto", "От файла")] + list(Equipment.choices),
+        initial="auto",
     )
     default_event = forms.ChoiceField(
         label="Дисциплина",

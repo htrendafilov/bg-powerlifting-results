@@ -1,12 +1,18 @@
+import re
+from collections import Counter
 from datetime import date
 from io import BytesIO
+from pathlib import Path
 
 import openpyxl
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
-from archive.models import AgeGroup, Athlete, Competition, Equipment, Event, Lift, Record, RecordOrigin, Result, Sex
-from archive.services.commit import apply_import
-from archive.services.importers import parse_upload
+from archive.models import (
+    AgeGroup, Athlete, Competition, Equipment, Event, Lift, MeetLevel, Record,
+    RecordOrigin, Result, Sex,
+)
+from archive.services.commit import apply_import, prepare_rows
+from archive.services.importers import _equipment_in_text, parse_upload
 from archive.services.names import athlete_name_key, transliterate
 from archive.services.records import recalculate_records
 
@@ -19,14 +25,14 @@ class MissingProtocolTests(TestCase):
             city="София",
             slug="test-missing",
         )
-        listing = self.client.get("/sustezaniya/")
+        listing = self.client.get("/competitions/")
         self.assertContains(listing, "Няма протокол")
-        detail = self.client.get("/sustezaniya/test-missing/")
+        detail = self.client.get("/competitions/test-missing/")
         self.assertContains(detail, "Няма протокол")
 
     def test_future_meet_is_marked_as_not_held_yet(self):
         Competition.objects.create(name="Предстои", start_date=date(2026, 11, 1), slug="test-future")
-        detail = self.client.get("/sustezaniya/test-future/")
+        detail = self.client.get("/competitions/test-future/")
         self.assertContains(detail, "Още не е проведено")
         self.assertNotContains(detail, "Няма протокол")
 
@@ -282,3 +288,238 @@ def _bytes(workbook):
     buffer = BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
+
+
+class RealProtocolTests(TestCase):
+    """The two protocol shapes the federation actually publishes. Synthetic
+    sheets missed every defect these files carry."""
+
+    def _fixture(self, name):
+        return (Path(__file__).parent / "tests_data" / name).read_bytes()
+
+    def test_goodlift_bench_drops_team_and_best_lifter_tables(self):
+        parsed = parse_upload("bench.xlsx", self._fixture("goodlift_bench_2026.xlsx"))
+        self.assertEqual(parsed.kind, "goodlift")
+        self.assertEqual(len(parsed.rows), 85)
+        self.assertEqual(parsed.skipped, 57)
+        self.assertIn("Nation (points)", parsed.skipped_sections)
+        names = {row.raw_name for row in parsed.rows}
+        for club in ("MNG", "NSA-Sofia", "STRONG", "Marek-13"):
+            self.assertNotIn(club, names)
+
+    def test_goodlift_seniors_are_not_filed_as_juniors(self):
+        parsed = parse_upload("bench.xlsx", self._fixture("goodlift_bench_2026.xlsx"))
+        by_group = Counter(row.age_group for row in parsed.rows)
+        self.assertEqual(by_group[AgeGroup.OPEN], 31)
+        self.assertEqual(by_group[AgeGroup.JUNIOR], 20)
+
+    def test_goodlift_nation_column_of_a_domestic_meet_is_the_club(self):
+        parsed = parse_upload("bench.xlsx", self._fixture("goodlift_bench_2026.xlsx"))
+        self.assertEqual({row.country for row in parsed.rows}, {""})
+        self.assertEqual(parsed.rows[0].club, "Yunak")
+
+    def test_goodlift_bench_needs_an_equipment_choice(self):
+        parsed = parse_upload("bench.xlsx", self._fixture("goodlift_bench_2026.xlsx"))
+        _, blocked = prepare_rows(parsed, default_sex=Sex.M, default_equipment="auto", default_event="auto")
+        self.assertEqual(len(blocked), 85)
+        self.assertIn("Няма екипировка", blocked[0]["problems"][0])
+        ready, blocked = prepare_rows(
+            parsed, default_sex=Sex.M, default_equipment=Equipment.CLASSIC, default_event="auto"
+        )
+        self.assertEqual((len(ready), len(blocked)), (85, 0))
+
+    def test_opl_sbd_protocol_still_imports_whole(self):
+        parsed = parse_upload("svishtov.xlsx", self._fixture("opl_sbd_2026.xlsx"))
+        self.assertEqual(parsed.kind, "opl")
+        self.assertEqual(len(parsed.rows), 146)
+        self.assertEqual(parsed.skipped, 0)
+        self.assertEqual(parsed.meet_date, date(2026, 4, 3))
+        self.assertEqual(parsed.city, "Свищов")
+        by_group = Counter(row.age_group for row in parsed.rows)
+        self.assertEqual(by_group[AgeGroup.OPEN], 61)
+        # "с екип" in the meet title, so the title supplies it and the operator need not.
+        self.assertEqual({row.equipment for row in parsed.rows}, {Equipment.EQUIPPED})
+
+
+class GoodliftFullPowerTests(TestCase):
+    def _sheet(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["Powerlifting 2026 • BG, Sofia • 19.09.2026"])
+        sheet.append([])
+        sheet.append([
+            "PL.", "Name", "B.Date", "Nation", "Weight", "Lot",
+            "1 Att.", "2 Att.", "3 Att.",
+            "1 Att.", "2 Att.", "3 Att.",
+            "1 Att.", "2 Att.", "3 Att.",
+            "RESULT", "Pts.",
+        ])
+        sheet.append(["Seniors"])
+        sheet.append(["- 93 kg"])
+        sheet.append([1, "Ivanov Ivan", "01.01.95", "Levski", 92.5, 7,
+                      250, 260, 270, 150, 160, "X", 280, 290, 300, 730, 90.1])
+        return _bytes(workbook)
+
+    def test_three_attempt_blocks_land_on_the_right_lifts(self):
+        row = parse_upload("full.xlsx", self._sheet()).rows[0]
+        self.assertEqual(row.event, Event.SBD)
+        self.assertEqual(row.age_group, AgeGroup.OPEN)
+        self.assertEqual(row.attempts["squat3"], 270)
+        self.assertEqual(row.attempts["bench2"], 160)
+        self.assertEqual(row.attempts["deadlift3"], 300)
+        self.assertEqual((row.best_squat, row.best_bench, row.best_deadlift), (270, 160, 300))
+        self.assertEqual(row.total, 730)
+
+    def test_an_unknown_attempt_layout_is_refused_not_guessed(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["PL.", "Name", "1 Att.", "2 Att.", "3 Att.", "1 Att.", "2 Att.", "3 Att.", "RESULT"])
+        sheet.append(["Open"])
+        sheet.append(["- 93 kg"])
+        sheet.append([1, "Ivanov Ivan", 100, 110, 120, 130, 140, 150, 270])
+        row = parse_upload("odd.xlsx", _bytes(workbook)).rows[0]
+        self.assertTrue(any("Неразпознат Goodlift лист" in problem for problem in row.errors))
+
+
+class ForeignLifterTests(TestCase):
+    def _euro_sheet(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["European Bench Press Championships • Kaunas • 12.05.2026"])
+        sheet.append([])
+        sheet.append(["PL.", "Name", "B.Date", "Nation", "Weight", "Lot", "1 Att.", "2 Att.", "3 Att.", "RESULT", "Pts."])
+        sheet.append(["Seniors"])
+        sheet.append(["- 83 kg"])
+        sheet.append([1, "Petrauskas Jonas", "01.01.95", "LTU", 82.5, 3, 200, 210, 220, 220, 130.0])
+        sheet.append([2, "Kovacs Andras", "01.01.95", "HUN", 82.7, 5, 195, 205, 215, 215, 127.0])
+        sheet.append([3, "Ivanov Ivan", "01.01.95", "BUL", 82.9, 4, 190, 200, "X", 200, 120.0])
+        return _bytes(workbook)
+
+    def test_nation_column_of_an_international_meet_is_the_country(self):
+        parsed = parse_upload("euro.xlsx", self._euro_sheet())
+        self.assertEqual([row.country for row in parsed.rows], ["LTU", "HUN", "BUL"])
+        self.assertEqual({row.club for row in parsed.rows}, {""})
+
+    def test_foreigners_do_not_take_bulgarian_records(self):
+        parsed = parse_upload("euro.xlsx", self._euro_sheet())
+        competition = Competition.objects.create(
+            name="Европейско", start_date=date(2026, 5, 12), level=MeetLevel.INTERNATIONAL
+        )
+        apply_import(
+            competition, parsed, default_sex=Sex.M, default_equipment=Equipment.CLASSIC,
+            default_event="auto", replace=True,
+        )
+        self.assertEqual(Result.objects.count(), 3)
+        holder = Record.objects.get(origin=RecordOrigin.RESULT, lift=Lift.BENCH, valid_to=None)
+        self.assertEqual(holder.value_kg, 200)
+        self.assertEqual(holder.athlete.name_lat, "Ivanov Ivan")
+
+    def test_an_international_row_without_a_country_is_blocked(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["Place", "Name", "Sex", "Division", "WeightClassKg", "Best3BenchKg", "Event"])
+        sheet.append([1, "Ivanov Ivan", "M", "Open", "93", 150, "B"])
+        parsed = parse_upload("nc.xlsx", _bytes(workbook))
+        _, blocked = prepare_rows(
+            parsed, default_sex="", default_equipment=Equipment.CLASSIC, default_event="auto",
+            meet_level=MeetLevel.INTERNATIONAL,
+        )
+        self.assertIn("Няма държава", blocked[0]["problems"][0])
+
+
+class MeetTitleEquipmentTests(TestCase):
+    def test_combined_rounds_do_not_claim_to_be_raw(self):
+        self.assertEqual(_equipment_in_text("2 кръг, вдигане от лег с и без екип"), "")
+        self.assertEqual(_equipment_in_text("Силов трибой с и без екип"), "")
+        self.assertEqual(_equipment_in_text("3 кръг, силов трибой без екип"), Equipment.CLASSIC)
+        self.assertEqual(_equipment_in_text("Класически силов трибой"), Equipment.CLASSIC)
+        self.assertEqual(_equipment_in_text("2 кръг, силов трибой с екип"), Equipment.EQUIPPED)
+        self.assertEqual(_equipment_in_text("Екипировъчен силов трибой"), Equipment.EQUIPPED)
+
+    def test_the_operator_overrides_the_title_but_not_a_column(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["MeetName", "Силов трибой без екип"])
+        sheet.append([])
+        sheet.append(["Place", "Name", "Sex", "Country", "Division", "WeightClassKg", "Best3BenchKg", "Event"])
+        sheet.append([1, "Ivan Ivanov", "M", "BUL", "Open", "93", 150, "B"])
+        parsed = parse_upload("t.xlsx", _bytes(workbook))
+        self.assertEqual(parsed.rows[0].equipment_source, "title")
+        ready, _ = prepare_rows(
+            parsed, default_sex="", default_equipment=Equipment.EQUIPPED, default_event="auto"
+        )
+        self.assertEqual(ready[0].equipment, Equipment.EQUIPPED)
+
+
+class UrlTests(TestCase):
+    def test_english_paths_answer_and_old_ones_redirect(self):
+        Competition.objects.create(name="Турнир", start_date=date(2025, 5, 1), slug="t")
+        for path in ("/competitions/", "/records/", "/athletes/", "/competitions/t/"):
+            self.assertEqual(self.client.get(path).status_code, 200, path)
+        for old, new in (
+            ("/sustezaniya/", "/competitions/"),
+            ("/sustezaniya/t/", "/competitions/t/"),
+            ("/rekordi/", "/records/"),
+            ("/sastezateli/", "/athletes/"),
+        ):
+            response = self.client.get(old)
+            self.assertEqual(response.status_code, 302, old)
+            self.assertEqual(response["Location"], new)
+
+    def test_redirect_keeps_the_query_string(self):
+        response = self.client.get("/rekordi/?sex=F&event=B")
+        self.assertEqual(response["Location"], "/records/?sex=F&event=B")
+
+
+class OrderingTests(TestCase):
+    def test_competitions_are_listed_newest_first_despite_the_annotation(self):
+        for day, name, slug in (
+            (date(2021, 6, 5), "стар", "old"),
+            (date(2026, 4, 3), "нов", "new"),
+            (date(2023, 7, 1), "среден", "mid"),
+        ):
+            Competition.objects.create(name=name, start_date=day, slug=slug)
+        home = self.client.get("/")
+        listing = self.client.get("/competitions/")
+        for page in (home, listing):
+            body = page.content.decode()
+            order = [body.index(f"/competitions/{slug}/") for slug in ("new", "mid", "old")]
+            self.assertEqual(order, sorted(order), page.request["PATH_INFO"])
+        years = [int(y) for y in re.findall(r"<h2>(\d{4})</h2>", listing.content.decode())]
+        self.assertEqual(years, sorted(years, reverse=True))
+
+
+class DeadliftOnlyTests(TestCase):
+    def test_a_deadlift_sheet_is_not_recorded_as_bench(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["Национален шампионат по мъртва тяга • София • 26.11.2026"])
+        sheet.append([])
+        sheet.append(["PL.", "Name", "Nation", "Weight", "1 Att.", "2 Att.", "3 Att.", "RESULT", "Pts."])
+        sheet.append(["Seniors"])
+        sheet.append(["- 93 kg"])
+        sheet.append([1, "Ivanov Ivan", "Levski", 92.5, 250, 265, 280, 280, 90.1])
+        row = parse_upload("dl.xlsx", _bytes(workbook)).rows[0]
+        self.assertTrue(any("мъртва тяга" in problem for problem in row.errors))
+        _, blocked = prepare_rows(
+            parse_upload("dl.xlsx", _bytes(workbook)),
+            default_sex=Sex.M, default_equipment=Equipment.CLASSIC, default_event="auto",
+        )
+        self.assertEqual(len(blocked), 1)
+
+
+@override_settings(
+    DEBUG=False, SECURE_SSL_REDIRECT=True, SECURE_HSTS_SECONDS=31536000,
+    SECURE_HSTS_INCLUDE_SUBDOMAINS=True, SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
+)
+class HttpsTests(TestCase):
+    def test_plain_http_is_redirected(self):
+        response = self.client.get("/competitions/")
+        self.assertEqual(response.status_code, 301)
+        self.assertTrue(response["Location"].startswith("https://"))
+
+    def test_a_request_behind_the_tunnel_is_served_with_hsts(self):
+        response = self.client.get("/competitions/", HTTP_X_FORWARDED_PROTO="https")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("max-age=31536000", response["Strict-Transport-Security"])
+        self.assertIn("includeSubDomains", response["Strict-Transport-Security"])

@@ -60,10 +60,12 @@ class ParsedRow:
     country: str = ""
     age_group: str = ""
     equipment: str = ""
+    equipment_source: str = ""
     event: str = ""
     weight_class: str = ""
     bodyweight: Decimal | None = None
     club: str = ""
+    nation_raw: str = ""
     lot: str = ""
     attempts: dict = field(default_factory=dict)
     best_squat: Decimal | None = None
@@ -75,6 +77,22 @@ class ParsedRow:
     warnings: list = field(default_factory=list)
     errors: list = field(default_factory=list)
 
+    @property
+    def sex_label(self):
+        return dict(Sex.choices).get(self.sex, "—")
+
+    @property
+    def age_label(self):
+        return dict(AgeGroup.choices).get(self.age_group, "—")
+
+    @property
+    def equipment_label(self):
+        return dict(Equipment.choices).get(self.equipment, "—")
+
+    @property
+    def event_label(self):
+        return dict(Event.choices).get(self.event, "—")
+
 
 @dataclass
 class ParsedFile:
@@ -85,6 +103,18 @@ class ParsedFile:
     formula: str = ""
     rows: list = field(default_factory=list)
     errors: list = field(default_factory=list)
+    skipped: int = 0
+    skipped_sections: list = field(default_factory=list)
+
+
+@dataclass
+class HeaderLayout:
+    """Where each column sits. Attempt columns repeat once per lift in Goodlift
+    sheets, so they are kept as an ordered list instead of a name->index map."""
+
+    mapping: dict = field(default_factory=dict)
+    attempts: list = field(default_factory=list)
+    results: list = field(default_factory=list)
 
 
 def parse_upload(filename, payload):
@@ -107,6 +137,10 @@ def parse_upload(filename, payload):
         for extra in parsed_sheets[1:]:
             merged.rows.extend(extra.rows)
             merged.errors.extend(extra.errors)
+            merged.skipped += extra.skipped
+            for label in extra.skipped_sections:
+                if label not in merged.skipped_sections:
+                    merged.skipped_sections.append(label)
         return merged
     return ParsedFile(kind="", errors=["Приемат се .xlsx и .csv. Стар .xls се качва като файл към турнира и се нанася отделно."])
 
@@ -130,10 +164,11 @@ def _clean_row(row):
 
 
 def _parse_table(title, rows):
-    header_index, mapping = _find_header(rows)
+    header_index, layout = _find_header(rows)
     if header_index is None:
         return ParsedFile(kind="")
-    kind = "goodlift" if "att1" in mapping.values() else "opl"
+    mapping = layout.mapping
+    kind = "goodlift" if layout.attempts else "opl"
     meta = _metadata(rows[:header_index])
     blob = " ".join(cell for row in rows[: header_index + 1] for cell in row if cell)
     parsed = ParsedFile(
@@ -146,6 +181,13 @@ def _parse_table(title, rows):
     division = ""
     sex = ""
     weight_class = ""
+    # Goodlift sheets interleave the results with team-score and best-lifter
+    # tables that also carry a rank and a name. An unrecognised single-cell
+    # heading starts such a block, so rows are dropped until the next heading
+    # that names a division, a sex or a weight class.
+    ignoring = False
+    title_equipment = _equipment_in_text(blob)
+    deadlift_only = len(layout.attempts) in {3, 4} and _mentions_deadlift(blob)
     for row in rows[header_index + 1 :]:
         if not any(row):
             continue
@@ -156,33 +198,62 @@ def _parse_table(title, rows):
             found_division = _division_label(label)
             if found_sex and not found_division:
                 sex = found_sex
+                ignoring = False
                 continue
             if found_class and _looks_like_class_label(label):
                 weight_class = found_class
+                ignoring = False
                 continue
             if found_division:
                 division = found_division
+                weight_class = ""
+                ignoring = False
                 continue
+            ignoring = label
             continue
         if not _is_place(_mapped(row, mapping, "place")):
             continue
-        item = _row_from_mapping(row, mapping, kind)
+        if ignoring:
+            parsed.skipped += 1
+            if ignoring not in parsed.skipped_sections:
+                parsed.skipped_sections.append(ignoring)
+            continue
+        item = _row_from_mapping(row, mapping, layout, kind)
         item.age_group = item.age_group or division
         item.sex = item.sex or sex
         item.weight_class = item.weight_class or weight_class
-        item.equipment = item.equipment or _equipment_in_text(blob)
+        if not item.equipment and title_equipment:
+            item.equipment = title_equipment
+            item.equipment_source = "title"
         item.points_formula = parsed.formula
-        if kind == "goodlift":
-            item.event = _event_in_text(blob) or item.event
-            nation = _mapped(row, mapping, "nation")
-            if nation and not item.club:
-                item.club = nation
+        # The attempt-column count already decided the lifts; the title is only
+        # consulted for the one case it cannot tell apart from a bench sheet.
+        if deadlift_only:
+            item.errors.append("Лист само за мъртва тяга. Дисциплината още не се поддържа.")
         if not item.raw_name:
             item.errors.append("Липсва име.")
         parsed.rows.append(item)
+    _assign_nation(parsed.rows)
     if not parsed.rows:
         parsed.errors.append(f"{title}: разпознат е заглавен ред, но няма стартове.")
     return parsed
+
+
+# A Goodlift "Nation" column holds country codes at an international meet and
+# club names at a domestic one, so the whole column decides, not a single row.
+def _assign_nation(rows):
+    values = [row.nation_raw.strip() for row in rows if row.nation_raw.strip()]
+    holds_countries = len(set(values)) >= 3 and all(
+        re.fullmatch(r"[A-Z]{3}", value) for value in values
+    )
+    for row in rows:
+        value = row.nation_raw.strip()
+        if not value:
+            continue
+        if holds_countries:
+            row.country = row.country or value
+        elif not row.club:
+            row.club = value
 
 
 def _find_header(rows):
@@ -191,17 +262,25 @@ def _find_header(rows):
         if "name" not in normalized:
             continue
         if "place" in normalized or "pl" in normalized:
-            return index, _header_map(normalized)
-    return None, {}
+            return index, _header_layout(normalized)
+    return None, HeaderLayout()
 
 
-def _header_map(normalized):
-    mapping = {}
+def _header_layout(normalized):
+    layout = HeaderLayout()
     for index, header in enumerate(normalized):
         field_name = _HEADER_ALIASES.get(header)
-        if field_name and field_name not in mapping.values():
-            mapping[index] = field_name
-    return mapping
+        if not field_name:
+            continue
+        if field_name in {"att1", "att2", "att3", "att4"}:
+            layout.attempts.append(index)
+            continue
+        if field_name == "result":
+            layout.results.append(index)
+            continue
+        if field_name not in layout.mapping.values():
+            layout.mapping[index] = field_name
+    return layout
 
 
 def _norm_header(value):
@@ -233,6 +312,10 @@ def _metadata(rows):
     return found
 
 
+def _cell(row, index):
+    return row[index] if index < len(row) else ""
+
+
 def _mapped(row, mapping, field_name, default=""):
     for index, name in mapping.items():
         if name == field_name and index < len(row):
@@ -240,18 +323,31 @@ def _mapped(row, mapping, field_name, default=""):
     return default
 
 
-def _row_from_mapping(row, mapping, kind):
+# Goodlift repeats "1 Att. 2 Att. 3 Att." once per contested lift. The number
+# of attempt columns is the only reliable signal for which lifts are in the file.
+_ATTEMPT_BLOCKS = {
+    3: [("bench", 3)],
+    4: [("bench", 4)],
+    9: [("squat", 3), ("bench", 3), ("deadlift", 3)],
+    12: [("squat", 4), ("bench", 4), ("deadlift", 4)],
+}
+
+
+def _row_from_mapping(row, mapping, layout, kind):
+    row_equipment = _equipment_in_text(_mapped(row, mapping, "equipment")) or ""
     item = ParsedRow(
         place=_clean_place(_mapped(row, mapping, "place")),
         raw_name=_mapped(row, mapping, "name"),
         sex=_sex_label(_mapped(row, mapping, "sex")) or "",
         country=_mapped(row, mapping, "country"),
         age_group=_division_label(_mapped(row, mapping, "division")) or "",
-        equipment=_equipment_in_text(_mapped(row, mapping, "equipment")) or "",
+        equipment=row_equipment,
+        equipment_source="row" if row_equipment else "",
         event=_event_code(_mapped(row, mapping, "event")),
         weight_class=normalize_weight_class(_mapped(row, mapping, "weight_class")),
         bodyweight=_decimal(_mapped(row, mapping, "bodyweight")),
         club=_mapped(row, mapping, "club") or _extra_club(row, mapping),
+        nation_raw=_mapped(row, mapping, "nation"),
         lot=_mapped(row, mapping, "lot"),
         points=_decimal(_mapped(row, mapping, "points")),
     )
@@ -278,16 +374,32 @@ def _row_from_mapping(row, mapping, kind):
         if not item.event:
             item.event = Event.SBD if item.best_squat is not None or item.best_deadlift is not None else Event.B
     else:
-        attempts = [_signed_kg(_mapped(row, mapping, f"att{number}")) for number in range(1, 5)]
-        lift = "bench"
-        item.event = Event.B
-        for number, value in enumerate(attempts, start=1):
-            if value is not None:
-                item.attempts[f"{lift}{number}"] = value
-        item.best_bench = _positive(_mapped(row, mapping, "result")) or _best_of(item, "bench")
-        if any(value is not None and value != item.best_bench for value in attempts if value is not None and value < 0):
-            pass
-        if "X" in "".join(_mapped(row, mapping, f"att{number}") for number in range(1, 4)).upper():
+        blocks = _ATTEMPT_BLOCKS.get(len(layout.attempts))
+        if blocks is None:
+            item.errors.append(
+                f"Неразпознат Goodlift лист: {len(layout.attempts)} колони с опити. "
+                "Очакват се 3 или 4 за лег и 9 или 12 за трибой."
+            )
+            return item
+        raw_attempts = [_cell(row, index) for index in layout.attempts]
+        position = 0
+        for lift, count in blocks:
+            for number in range(1, count + 1):
+                value = _signed_kg(raw_attempts[position])
+                if value is not None:
+                    item.attempts[f"{lift}{number}"] = value
+                position += 1
+        final = _positive(_cell(row, layout.results[-1])) if layout.results else None
+        if len(blocks) == 1:
+            item.event = Event.B
+            item.best_bench = final or _best_of(item, "bench")
+        else:
+            item.event = Event.SBD
+            item.best_squat = _best_of(item, "squat")
+            item.best_bench = _best_of(item, "bench")
+            item.best_deadlift = _best_of(item, "deadlift")
+            item.total = final
+        if any("X" == value.strip().upper() for value in raw_attempts):
             item.warnings.append("Има неуспешен опит без записано тегло.")
     if item.event == Event.SBD and item.total is None:
         if item.best_squat and item.best_bench and item.best_deadlift:
@@ -371,15 +483,24 @@ def _division_label(value):
         "девойкидо23": AgeGroup.JUNIOR,
         "o": AgeGroup.OPEN,
         "open": AgeGroup.OPEN,
+        "opens": AgeGroup.OPEN,
         "открита": AgeGroup.OPEN,
+        "seniors": AgeGroup.OPEN,
+        "senior": AgeGroup.OPEN,
+        "sr": AgeGroup.OPEN,
+        "елит": AgeGroup.OPEN,
         "m1": AgeGroup.M1,
         "masters1": AgeGroup.M1,
+        "ветерани1": AgeGroup.M1,
         "m2": AgeGroup.M2,
         "masters2": AgeGroup.M2,
+        "ветерани2": AgeGroup.M2,
         "m3": AgeGroup.M3,
         "masters3": AgeGroup.M3,
+        "ветерани3": AgeGroup.M3,
         "m4": AgeGroup.M4,
         "masters4": AgeGroup.M4,
+        "ветерани4": AgeGroup.M4,
     }
     return table.get(text, "")
 
@@ -408,9 +529,13 @@ def normalize_weight_class(value):
 
 def _equipment_in_text(value):
     text = (value or "").lower()
-    if "без екип" in text or "classic" in text or "raw" in text or "класик" in text:
+    # "с и без екип" is a combined round: the file alone cannot say which lifter
+    # wore a suit, so it stays unset and the operator has to choose.
+    if re.search(r"с\s+и\s+без\s+екип", text) or ("с екип" in text and "без екип" in text):
+        return ""
+    if any(word in text for word in ("без екип", "classic", "raw", "класик", "класическ")):
         return Equipment.CLASSIC
-    if "екип" in text or "equipped" in text or "single-ply" in text or "single ply" in text:
+    if any(word in text for word in ("екип", "equipped", "single-ply", "single ply")):
         return Equipment.EQUIPPED
     return ""
 
@@ -422,6 +547,11 @@ def _event_in_text(value):
     if "лег" in text or "bench" in text:
         return Event.B
     return ""
+
+
+def _mentions_deadlift(value):
+    text = (value or "").lower()
+    return "мъртва тяга" in text or "deadlift" in text
 
 
 def _event_code(value):

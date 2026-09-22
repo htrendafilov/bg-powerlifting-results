@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.core.files.base import File
 from django.db import transaction
 
-from archive.models import Athlete, CompetitionFile, Event, FileKind, Result
+from archive.models import BG_COUNTRIES, Athlete, CompetitionFile, Event, FileKind, MeetLevel, Result
 from archive.services.names import athlete_name_key, is_cyrillic, transliterate
 from archive.services.records import recalculate_records
 
@@ -24,9 +24,16 @@ ATTEMPT_FIELDS = [
 
 
 def apply_import(competition, parsed, *, default_sex, default_equipment, default_event, replace, stored_file=None, filename=""):
-    ready, blocked = prepare_rows(parsed, default_sex=default_sex, default_equipment=default_equipment, default_event=default_event)
+    ready, blocked = prepare_rows(
+        parsed,
+        default_sex=default_sex,
+        default_equipment=default_equipment,
+        default_event=default_event,
+        meet_level=competition.level,
+    )
     if blocked:
         return {"created": 0, "athletes": 0, "blocked": blocked}
+    home_country = "България" if competition.level == MeetLevel.NATIONAL else ""
 
     with transaction.atomic():
         if replace:
@@ -40,7 +47,7 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
                 competition=competition,
                 athlete=athlete,
                 raw_name=item.raw_name,
-                country=item.country or "България",
+                country=_country_for(item.country, home_country),
                 sex=item.sex,
                 age_group=item.age_group,
                 equipment=item.equipment,
@@ -72,27 +79,39 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
     return {"created": created, "athletes": created_athletes, "blocked": []}
 
 
-def prepare_rows(parsed, *, default_sex, default_equipment, default_event):
+def _country_for(value, home_country):
+    text = (value or "").strip()
+    if not text:
+        return home_country
+    return "България" if text.lower() in BG_COUNTRIES else text
+
+
+def prepare_rows(parsed, *, default_sex, default_equipment, default_event, meet_level=MeetLevel.NATIONAL):
     ready = []
     blocked = []
     for index, item in enumerate(parsed.rows, start=1):
         item.sex = item.sex or default_sex
-        item.equipment = item.equipment or default_equipment
-        if not item.event or item.event == "auto":
-            item.event = "" if default_event == "auto" else default_event
-        if default_event and default_event != "auto":
+        # A per-row Equipment column beats the operator, who in turn beats a
+        # guess made from the meet title.
+        if item.equipment_source != "row" and default_equipment != "auto":
+            item.equipment = default_equipment
+        if default_event != "auto":
             item.event = default_event
+        elif item.event == "auto":
+            item.event = ""
         problems = list(item.errors)
         if not item.sex:
             problems.append("Няма пол. Избери пол в импорта.")
         if not item.age_group:
             problems.append("Няма възрастова група.")
         if not item.equipment:
-            problems.append("Няма екипировка.")
+            problems.append("Няма екипировка. Изборът „с и без екип“ трябва да се направи в импорта.")
         if item.event not in {Event.SBD, Event.B}:
             problems.append("Няма дисциплина.")
         if not item.weight_class and item.place not in {"NS", "DQ", "DD", "G"}:
             problems.append("Няма категория.")
+        if meet_level == MeetLevel.INTERNATIONAL and not item.country:
+            problems.append("Няма държава. На международен турнир тя не се подразбира.")
         match = _match_state(item) if item.raw_name and item.sex else None
         if match == "ambiguous":
             problems.append("Има повече от един състезател с това име.")

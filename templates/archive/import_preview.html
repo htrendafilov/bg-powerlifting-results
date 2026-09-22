@@ -4,6 +4,12 @@
   <h1>Преглед</h1>
   <p class="lead">{{ options.filename }} · {{ parsed.kind }} · {{ ready|length }} реда за запис{% if blocked %} · {{ blocked|length }} спрени{% endif %}</p>
   {% if parsed.meet_date %}<p>Дата от файла: {{ parsed.meet_date|date:"d.m.Y" }}</p>{% endif %}
+  {% if parsed.skipped %}
+    <p class="missing">
+      Пропуснати {{ parsed.skipped }} реда от таблици, които не са стартове:
+      {{ parsed.skipped_sections|join:", " }}.
+    </p>
+  {% endif %}
   {% if blocked %}
     <h2>Спрени редове</h2>
     <ul>
@@ -18,7 +24,9 @@
       <table class="results">
         <thead>
           <tr>
-            <th>Място</th><th>Име</th><th></th><th>Пол</th><th>Възраст</th><th>Кат.</th><th>Клек</th><th>Лег</th><th>Тяга</th><th>Тотал</th><th>Клуб</th>
+            <th>Място</th><th>Име</th><th></th><th>Пол</th><th>Възраст</th><th>Кат.</th>
+            <th>Екип.</th><th>Дисц.</th><th>Държава</th>
+            <th>Клек</th><th>Лег</th><th>Тяга</th><th>Тотал</th><th>Клуб</th><th>Бележка</th>
           </tr>
         </thead>
         <tbody>
@@ -27,14 +35,18 @@
               <td>{{ item.place }}</td>
               <td>{{ item.raw_name }}</td>
               <td>{% if item.match == "new" %}нов{% else %}съществува{% endif %}</td>
-              <td>{{ item.sex }}</td>
-              <td>{{ item.age_group }}</td>
+              <td>{{ item.sex_label }}</td>
+              <td>{{ item.age_label }}</td>
               <td>{{ item.weight_class }}</td>
+              <td>{{ item.equipment_label }}</td>
+              <td>{{ item.event_label }}</td>
+              <td>{{ item.country|default:"–" }}</td>
               <td>{{ item.best_squat|default:"–" }}</td>
               <td>{{ item.best_bench|default:"–" }}</td>
               <td>{{ item.best_deadlift|default:"–" }}</td>
               <td>{{ item.total|default:"–" }}</td>
               <td>{{ item.club }}</td>
+              <td>{{ item.warnings|join:"; " }}</td>
             </tr>
           {% endfor %}
         </tbody>
