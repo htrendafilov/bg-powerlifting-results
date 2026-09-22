@@ -105,7 +105,21 @@ CSRF_TRUSTED_ORIGINS = [
     if origin.strip()
 ]
 
+def _flag(name, default):
+    return os.environ.get(name, default) == "1"
+
+
 if not DEBUG:
+    # Cloudflare sets X-Forwarded-Proto from the visitor's scheme, so the
+    # redirect below cannot loop even though the tunnel reaches gunicorn over
+    # plain HTTP on the loopback.
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = _flag("SECURE_SSL_REDIRECT", "1")
+    # A browser that has seen this header refuses plain HTTP for the whole
+    # period, so shorten SECURE_HSTS_SECONDS before ever serving the domain
+    # without TLS. Preload is left off: it is the one step that is hard to undo.
+    SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", 31536000))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = _flag("SECURE_HSTS_INCLUDE_SUBDOMAINS", "1")
+    SECURE_HSTS_PRELOAD = _flag("SECURE_HSTS_PRELOAD", "0")
