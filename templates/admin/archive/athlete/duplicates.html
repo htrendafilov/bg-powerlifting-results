@@ -1,0 +1,32 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <p>Двойки, които приличат на един и същ човек. Сходството се смята по името;
+     решението е твое — има и различни хора с еднакви имена.</p>
+  {% if pairs %}
+    <table>
+      <thead><tr><th>Прилика</th><th>Запис 1</th><th>Стартове</th><th>Запис 2</th><th>Стартове</th><th></th></tr></thead>
+      <tbody>
+        {% for pair in pairs %}
+          <tr>
+            <td>{{ pair.score }}%</td>
+            <td><a href="{% url 'admin:archive_athlete_change' pair.one.pk %}">{{ pair.one.display_name }}</a></td>
+            <td>{{ pair.one_starts }}</td>
+            <td><a href="{% url 'admin:archive_athlete_change' pair.two.pk %}">{{ pair.two.display_name }}</a></td>
+            <td>{{ pair.two_starts }}</td>
+            <td>
+              <form method="post" action="{% url 'admin:archive_athlete_changelist' %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="merge_selected">
+                <input type="hidden" name="_selected_action" value="{{ pair.one.pk }}">
+                <input type="hidden" name="_selected_action" value="{{ pair.two.pk }}">
+                <input type="submit" value="Слей">
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>Няма намерени двойки.</p>
+  {% endif %}
+{% endblock %}

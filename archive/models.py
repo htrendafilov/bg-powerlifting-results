@@ -97,6 +97,11 @@ class Athlete(models.Model):
         default=False,
         help_text="Нужно е само когато годината на раждане липсва, за да се покажат снимки.",
     )
+    name_bg_auto = models.BooleanField(
+        "Името е изведено автоматично",
+        default=False,
+        help_text="Обърнато от латиница, защото източникът няма кирилица. Подлежи на проверка.",
+    )
     name_key = models.CharField(max_length=220, blank=True, db_index=True)
     slug = models.SlugField(max_length=220, unique=True)
     notes = models.TextField("Бележка", blank=True)

@@ -5,15 +5,17 @@ from io import BytesIO
 from pathlib import Path
 
 import openpyxl
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 
 from archive.models import (
-    AgeGroup, Athlete, Competition, Equipment, Event, Lift, MeetLevel, Record,
-    RecordOrigin, Result, Sex,
+    AgeGroup, Athlete, AthletePhoto, Competition, Equipment, Event, Lift, MeetLevel,
+    Record, RecordOrigin, Result, Sex,
 )
 from archive.services.commit import apply_import, prepare_rows
 from archive.services.importers import _equipment_in_text, parse_upload
-from archive.services.names import athlete_name_key, transliterate
+from archive.services.merge import duplicate_candidates, merge_athletes
+from archive.services.names import athlete_name_key, reverse_transliterate, transliterate
 from archive.services.records import recalculate_records
 
 
@@ -663,3 +665,169 @@ class CompetitionLayoutTests(TestCase):
         self.assertNotIn("120 екип", page)
         self.assertIn("120 кг", page)
         self.assertIn('class="sex-heading"><span>Жени</span>', page)
+
+
+class MergeAthleteTests(TestCase):
+    def setUp(self):
+        self.keep = Athlete.objects.create(name_bg="Роберт Михайлов", sex=Sex.M, birth_year=1990)
+        self.dupe = Athlete.objects.create(name_lat="Robert Michailov", sex=Sex.M)
+        self.competition = Competition.objects.create(
+            name="Европейско", start_date=date(2013, 5, 7), slug="euro-2013",
+            level=MeetLevel.INTERNATIONAL,
+        )
+        self.result = Result.objects.create(
+            competition=self.competition, athlete=self.dupe, raw_name="Robert Michailov",
+            sex=Sex.M, age_group=AgeGroup.OPEN, equipment=Equipment.EQUIPPED, event=Event.SBD,
+            weight_class="83", country="България", best_bench=222.5,
+        )
+        AthletePhoto.objects.create(athlete=self.dupe, year=2013)
+
+    def test_everything_moves_to_the_survivor(self):
+        slug = self.keep.slug
+        merge_athletes(self.keep, [self.dupe])
+        self.keep.refresh_from_db()
+        self.assertEqual(self.keep.results.count(), 1)
+        self.assertEqual(self.keep.photos.count(), 1)
+        self.assertFalse(Athlete.objects.filter(pk=self.dupe.pk).exists())
+        self.assertEqual(self.keep.slug, slug)
+        self.assertIn("Слети: Robert Michailov", self.keep.notes)
+
+    def test_the_survivor_keeps_what_it_has_and_gains_what_it_lacks(self):
+        self.dupe.birth_year = 1991
+        self.dupe.adult_confirmed = True
+        self.dupe.save()
+        merge_athletes(self.keep, [self.dupe])
+        self.keep.refresh_from_db()
+        self.assertEqual(self.keep.birth_year, 1990)
+        self.assertEqual(self.keep.name_lat, "Robert Mihaylov")
+        self.assertTrue(self.keep.adult_confirmed)
+
+    def test_records_follow_the_results(self):
+        recalculate_records()
+        self.assertEqual(Record.objects.get(lift=Lift.BENCH).athlete, self.dupe)
+        merge_athletes(self.keep, [self.dupe])
+        self.assertEqual(Record.objects.get(lift=Lift.BENCH).athlete, self.keep)
+
+    def test_a_seeded_record_is_carried_over_too(self):
+        seed = Record.objects.create(
+            sex=Sex.M, age_group=AgeGroup.OPEN, equipment=Equipment.EQUIPPED, event=Event.SBD,
+            lift=Lift.SQUAT, weight_class="83", value_kg=300, athlete=self.dupe,
+            origin=RecordOrigin.SEED, valid_from=date(2010, 1, 1),
+        )
+        merge_athletes(self.keep, [self.dupe])
+        seed.refresh_from_db()
+        self.assertEqual(seed.athlete, self.keep)
+
+    def test_candidates_find_the_spelling_variants(self):
+        pairs = duplicate_candidates()
+        found = {(one.pk, two.pk) for _, one, two in pairs}
+        self.assertIn(tuple(sorted((self.keep.pk, self.dupe.pk))), found)
+
+    def test_candidates_pair_a_two_part_name_with_a_three_part_one(self):
+        Result.objects.all().delete()
+        Athlete.objects.all().delete()
+        short = Athlete.objects.create(name_lat="Ivan Ivanov", sex=Sex.M)
+        full = Athlete.objects.create(name_bg="Иван Петров Иванов", sex=Sex.M)
+        found = {tuple(sorted((one.pk, two.pk))) for _, one, two in duplicate_candidates()}
+        self.assertIn(tuple(sorted((short.pk, full.pk))), found)
+
+    def test_a_different_person_with_a_different_name_is_not_paired(self):
+        Result.objects.all().delete()
+        Athlete.objects.all().delete()
+        one = Athlete.objects.create(name_lat="Ivan Ivanov", sex=Sex.M)
+        two = Athlete.objects.create(name_lat="Georgi Stoev", sex=Sex.M)
+        found = {tuple(sorted((a.pk, b.pk))) for _, a, b in duplicate_candidates()}
+        self.assertNotIn(tuple(sorted((one.pk, two.pk))), found)
+
+
+class MergeAdminTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+
+        self.admin = User.objects.create_superuser("admin", "a@b.bg", "pw-for-tests-only")
+        self.client.force_login(self.admin)
+        self.keep = Athlete.objects.create(name_bg="Роберт Михайлов", sex=Sex.M)
+        self.dupe = Athlete.objects.create(name_lat="Robert Michailov", sex=Sex.M)
+
+    def test_the_action_asks_before_it_merges(self):
+        response = self.client.post(
+            "/admin/archive/athlete/",
+            {"action": "merge_selected", "_selected_action": [self.keep.pk, self.dupe.pk]},
+        )
+        self.assertContains(response, "Сливане на състезатели")
+        self.assertEqual(Athlete.objects.count(), 2)
+
+    def test_confirming_merges_into_the_chosen_record(self):
+        response = self.client.post(
+            "/admin/archive/athlete/",
+            {
+                "action": "merge_selected",
+                "_selected_action": [self.keep.pk, self.dupe.pk],
+                "confirm_merge": "1",
+                "target": str(self.keep.pk),
+            },
+            follow=True,
+        )
+        self.assertEqual(Athlete.objects.count(), 1)
+        self.assertEqual(Athlete.objects.get().pk, self.keep.pk)
+        self.assertContains(response, "слети 1")
+
+    def test_one_selected_athlete_is_refused(self):
+        self.client.post(
+            "/admin/archive/athlete/",
+            {"action": "merge_selected", "_selected_action": [self.keep.pk]},
+        )
+        self.assertEqual(Athlete.objects.count(), 2)
+
+    def test_the_duplicates_page_lists_the_pair(self):
+        response = self.client.get("/admin/archive/athlete/duplicates/")
+        self.assertContains(response, "Роберт Михайлов")
+        self.assertContains(response, "Robert Michailov")
+
+
+class BulgarianNameTests(TestCase):
+    def test_a_standard_transliteration_comes_back_unchanged(self):
+        for name in ("Иван Петров", "Рая Андонова", "Калоян Панайотов",
+                     "Мария Табакова-Трендафилова", "Адриана Райкова"):
+            self.assertEqual(reverse_transliterate(transliterate(name)), name)
+
+    def test_the_spellings_the_sources_actually_use(self):
+        cases = {
+            "Christo Christov": "Христо Христов",
+            "Michailov": "Михайлов",
+            "Alexander": "Александър",
+            "Ivailo": "Ивайло",
+            "Georgy": "Георги",
+            "Evgeniy": "Евгени",
+            "Iordan": "Йордан",
+            "Ilia": "Илия",
+        }
+        for latin, expected in cases.items():
+            got = " ".join(reverse_transliterate(part) for part in latin.split())
+            self.assertEqual(got, expected, latin)
+
+    def test_the_command_prefers_a_name_read_from_a_bulgarian_protocol(self):
+        Athlete.objects.create(name_bg="Кольо Иванов", sex=Sex.M)
+        latin_only = Athlete.objects.create(name_lat="Koljo Ivanov", sex=Sex.M)
+        call_command("bulgarize_names", verbosity=0)
+        latin_only.refresh_from_db()
+        self.assertEqual(latin_only.name_bg, "Кольо Иванов")
+        self.assertTrue(latin_only.name_bg_auto)
+
+    def test_a_name_read_from_a_protocol_is_never_overwritten(self):
+        athlete = Athlete.objects.create(name_bg="Иван Петров", name_lat="Ivan Petrov", sex=Sex.M)
+        call_command("bulgarize_names", verbosity=0)
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.name_bg, "Иван Петров")
+        self.assertFalse(athlete.name_bg_auto)
+
+    def test_the_disambiguator_openpowerlifting_adds_is_kept(self):
+        athlete = Athlete.objects.create(name_lat="Alexander Pavlov #2", sex=Sex.M)
+        call_command("bulgarize_names", verbosity=0)
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.name_bg, "Александър Павлов #2")
+
+    def test_derived_names_are_flagged_for_review(self):
+        Athlete.objects.create(name_lat="Ivaylo Hristov", sex=Sex.M)
+        call_command("bulgarize_names", verbosity=0)
+        self.assertEqual(Athlete.objects.filter(name_bg_auto=True).count(), 1)

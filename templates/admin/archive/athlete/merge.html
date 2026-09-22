@@ -1,0 +1,31 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <p>Стартовете, рекордите и снимките отиват при записа, който избереш. Останалите се изтриват.
+     Празните полета на избрания се попълват от другите.</p>
+  <form method="post">
+    {% csrf_token %}
+    <table>
+      <thead>
+        <tr><th>Остава</th><th>Име</th><th>На латиница</th><th>Пол</th><th>Година</th><th>Стартове</th></tr>
+      </thead>
+      <tbody>
+        {% for athlete in athletes %}
+          <tr>
+            <td><input type="radio" name="target" value="{{ athlete.pk }}" {% if forloop.first %}checked{% endif %}></td>
+            <td>{{ athlete.display_name }}</td>
+            <td>{{ athlete.name_lat }}</td>
+            <td>{{ athlete.get_sex_display }}</td>
+            <td>{{ athlete.birth_year|default:"–" }}</td>
+            <td>{{ athlete.starts_total }}</td>
+          </tr>
+          <input type="hidden" name="{{ action_checkbox_name }}" value="{{ athlete.pk }}">
+        {% endfor %}
+      </tbody>
+    </table>
+    <input type="hidden" name="action" value="merge_selected">
+    <p>
+      <input type="submit" name="confirm_merge" value="Слей" class="default">
+      <a href="{% url 'admin:archive_athlete_changelist' %}" class="button cancel-link">Отказ</a>
+    </p>
+  </form>
+{% endblock %}
