@@ -7,7 +7,7 @@ from archive.models import Competition, CompetitionFile, FileKind, MeetLevel
 
 
 class Command(BaseCommand):
-    help = "Създава националните състезания от 2021 насам, включително тези без протокол."
+    help = "Създава националните състезания от 2020 насам, включително тези без протокол."
 
     def handle(self, *args, **options):
         created = 0

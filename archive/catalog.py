@@ -1,8 +1,24 @@
 from datetime import date
 
-# National meets from the federation calendars and the results page.
-# A meet with no links is shown as "Няма протокол".
+# National meets from the federation calendars, the results page and the
+# federation Facebook page. A meet with no links is shown as "Няма протокол".
+# The April 2020 equipped round was announced and then cancelled, so it is omitted.
 CATALOG = [
+    {
+        "slug": "2020-dupnitsa-leg",
+        "name": "2 кръг, вдигане от лег с и без екип",
+        "start": date(2020, 8, 23),
+        "city": "Дупница",
+        "links": [],
+    },
+    {
+        "slug": "2020-sofia-sbd",
+        "name": "Силов трибой с и без екип",
+        "start": date(2020, 9, 6),
+        "end": date(2020, 9, 7),
+        "city": "София",
+        "links": [],
+    },
     {
         "slug": "2021-dupnitsa-krag-1",
         "name": "1 кръг, Дупница",
@@ -107,7 +123,20 @@ CATALOG = [
         "start": date(2023, 5, 27),
         "end": date(2023, 5, 28),
         "city": "София",
-        "links": [],
+        "links": [
+            (
+                "Жени",
+                "https://drive.google.com/file/d/1RujTs2NCKV844EcJC_bqtqqT66srOcbO/view",
+            ),
+            (
+                "Мъже без екип",
+                "https://drive.google.com/file/d/1MdK-klTPTdNSAXs95aBVk0P-3cCXIkRp/view",
+            ),
+            (
+                "Мъже с екип",
+                "https://drive.google.com/file/d/1z4qo6JI4sW9KSHdXweDFo7dwKpwYWAIk/view",
+            ),
+        ],
     },
     {
         "slug": "2023-dupnitsa-classic",
@@ -123,6 +152,18 @@ CATALOG = [
         "start": date(2023, 10, 7),
         "city": "Хасково",
         "links": [],
+    },
+    {
+        "slug": "2023-sofia-deadlift",
+        "name": "Национален шампионат по мъртва тяга",
+        "start": date(2023, 11, 26),
+        "city": "София",
+        "links": [
+            (
+                "Протокол",
+                "https://docs.google.com/spreadsheets/d/1BQY0kWUdx__ifToZ05DZMgpytoyo5nL6/edit",
+            )
+        ],
     },
     {
         "slug": "2024-pernik-ekip",
