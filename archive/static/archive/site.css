@@ -138,6 +138,8 @@ table.results th { font-size: 0.78rem; letter-spacing: 0.03em; color: var(--mute
   border-bottom: 1px solid var(--line);
 }
 
+.results-pane .sex-group { position: relative; }
+
 .results-pane .sex-heading {
   position: sticky;
   top: 0;

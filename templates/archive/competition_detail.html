@@ -71,6 +71,7 @@
   {% if groups %}
     <div class="results-pane">
     {% for group in groups %}
+      <section class="sex-group">
       <h2 class="sex-heading">{{ group.label }}</h2>
         <table class="results">
           <thead>
@@ -125,6 +126,7 @@
             {% endfor %}
           </tbody>
         </table>
+      </section>
     {% endfor %}
     </div>
   {% elif has_any_results %}

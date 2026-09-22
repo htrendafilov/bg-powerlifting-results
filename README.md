@@ -40,6 +40,11 @@ python3 -m venv .venv
 `deploy/powerlifting.service`. Пред него стои Cloudflare Tunnel, така че сървърът няма публичен
 адрес.
 
+Кодът се пренася с `rsync` — на сървъра няма git. `collectstatic` **трябва** да се пуска с
+`DEBUG=0`: хранилището за статика се избира според `DEBUG`, и без него хешираните файлове и
+`staticfiles.json` не се обновяват, а gunicorn (който върви с `DEBUG=0`) продължава да сервира
+стария хеш.
+
 Само по HTTPS. Пренасочването http → https е на ръба, в Cloudflare (`Always Use HTTPS`), а
 Django праща HSTS и пренасочва само за всеки случай. Трите настройки се сменят от средата:
 `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SECURE_HSTS_INCLUDE_SUBDOMAINS`. `SECURE_HSTS_PRELOAD`
