@@ -134,14 +134,18 @@ def _match_state(item):
 
 
 def _athlete_for(item):
-    key = athlete_name_key(item.raw_name if is_cyrillic(item.raw_name) else "", item.raw_name)
-    existing = list(Athlete.objects.filter(sex=item.sex, name_key=key)[:1])
+    return athlete_for(item.raw_name, item.sex)
+
+
+def athlete_for(raw_name, sex):
+    key = athlete_name_key(raw_name if is_cyrillic(raw_name) else "", raw_name)
+    existing = list(Athlete.objects.filter(sex=sex, name_key=key)[:1])
     if existing:
         return existing[0], False
-    if is_cyrillic(item.raw_name):
-        athlete = Athlete(name_bg=item.raw_name, name_lat=transliterate(item.raw_name), sex=item.sex)
+    if is_cyrillic(raw_name):
+        athlete = Athlete(name_bg=raw_name, name_lat=transliterate(raw_name), sex=sex)
     else:
-        athlete = Athlete(name_lat=item.raw_name, sex=item.sex)
+        athlete = Athlete(name_lat=raw_name, sex=sex)
     athlete.save()
     return athlete, True
 
