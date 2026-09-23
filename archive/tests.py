@@ -11,7 +11,7 @@ from django.test import TestCase, override_settings
 
 from archive.models import (
     AgeGroup, Athlete, AthletePhoto, Competition, Equipment, Event, Lift, MeetLevel,
-    Record, RecordOrigin, Result, Sex, SiteSettings,
+    CompetitionFile, FileKind, Record, RecordOrigin, Result, Sex, SiteSettings,
 )
 from archive.services.commit import apply_import, prepare_rows
 from archive.services.importers import _equipment_in_text, parse_upload
@@ -1270,3 +1270,135 @@ class DivisionCodeShapeTests(TestCase):
 
         for heading in ("Best Lifters of Subjuniors", "Nation (points)", "Best Lifters of Seniors"):
             self.assertEqual(_division_label(heading), "", heading)
+
+
+class SplitNameAndAgeClassTests(TestCase):
+    def _sheet(self, header, row):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(header)
+        sheet.append(row)
+        return parse_upload("p.xlsx", _bytes(workbook))
+
+    def test_a_name_split_over_two_columns_is_joined(self):
+        parsed = self._sheet(
+            ["№", "Име", "Фамилия", "Отбор", "Дивизия", "кат.", "лег"],
+            [1, "Станимир", "Данчев", "Марек", "M-CL-BP", "59", 75],
+        )
+        self.assertEqual(parsed.rows[0].raw_name, "Станимир Данчев")
+        self.assertEqual(parsed.rows[0].club, "Марек")
+
+    def test_the_age_class_column_gives_the_division(self):
+        parsed = self._sheet(
+            ["№", "Име", "Фамилия", "ГР", "Дивизия", "кат.", "лег"],
+            [1, "Станимир", "Данчев", 18, "M-CL-BP", "59", 75],
+        )
+        ready, blocked = prepare_rows(
+            parsed, default_sex="", default_equipment="auto", default_event="auto"
+        )
+        self.assertEqual(blocked, [])
+        self.assertEqual(ready[0].age_group, AgeGroup.SUBJUNIOR)
+        self.assertEqual(ready[0].event, Event.B)
+        self.assertEqual(ready[0].equipment, Equipment.CLASSIC)
+
+    def test_the_age_class_numbers_the_protocols_use(self):
+        for value, expected in ((18, AgeGroup.SUBJUNIOR), (23, AgeGroup.JUNIOR),
+                                (24, AgeGroup.OPEN), (40, AgeGroup.M1), (50, AgeGroup.M2)):
+            parsed = self._sheet(
+                ["№", "Име", "Фамилия", "ГР", "Дивизия", "кат.", "лег"],
+                [1, "Тест", "Тестов", value, "M-CL-BP", "93", 100],
+            )
+            ready, _ = prepare_rows(
+                parsed, default_sex="", default_equipment="auto", default_event="auto"
+            )
+            self.assertEqual(ready[0].age_group, expected, value)
+
+    def test_a_birth_year_in_that_column_is_ignored(self):
+        parsed = self._sheet(
+            ["№", "Име", "Фамилия", "ГР", "Дивизия", "кат.", "лег"],
+            [1, "Тест", "Тестов", 1995, "M-CL-BP", "93", 100],
+        )
+        _, blocked = prepare_rows(
+            parsed, default_sex="", default_equipment="auto", default_event="auto"
+        )
+        self.assertIn("Няма възрастова група", blocked[0]["problems"][0])
+
+
+class TickMarkAttemptTests(TestCase):
+    def _row(self, cells):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["№", "Име", "Фамилия", "ГР", "Дивизия", "тегло", "кат.",
+                      "лег-1", "", "лег-2", "", "лег-3", "", "лег"])
+        sheet.append(cells)
+        return parse_upload("p.xlsx", _bytes(workbook)).rows[0]
+
+    def test_the_weight_sits_beside_the_tick(self):
+        row = self._row([1, "Станимир", "Данчев", 18, "M-CL-BP", 56.7, "59",
+                         "√", 60, "√", 70, "√", 75, 75])
+        self.assertEqual(row.attempts["bench1"], 60)
+        self.assertEqual(row.attempts["bench2"], 70)
+        self.assertEqual(row.attempts["bench3"], 75)
+        self.assertEqual(row.best_bench, 75)
+
+    def test_a_cross_marks_the_attempt_failed(self):
+        row = self._row([1, "Тест", "Тестов", 24, "M-CL-BP", 82.0, "83",
+                         "√", 100, "×", 110, "×", 110, 100])
+        self.assertEqual(row.attempts["bench1"], 100)
+        self.assertEqual(row.attempts["bench2"], -110)
+        self.assertEqual(row.attempts["bench3"], -110)
+        self.assertEqual(row.best_bench, 100)
+
+    def test_a_plain_x_still_means_a_failed_attempt_with_no_weight(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["PL.", "Name", "Nation", "Weight", "1 Att.", "2 Att.", "3 Att.", "RESULT"])
+        sheet.append(["Open"])
+        sheet.append(["- 93 kg"])
+        sheet.append([1, "Ivanov Ivan", "NSA", 92.5, 100, 110, "X", 110])
+        row = parse_upload("g.xlsx", _bytes(workbook)).rows[0]
+        self.assertIsNone(row.attempts.get("bench3"))
+        self.assertEqual(row.best_bench, 110)
+
+
+class ProtocolReplacesOplSourceTests(TestCase):
+    def test_loading_a_protocol_drops_the_openpowerlifting_note(self):
+        competition = Competition.objects.create(
+            name="Вдигане от лег", start_date=date(2024, 9, 21), slug="dupn-2024"
+        )
+        CompetitionFile.objects.create(
+            competition=competition, kind=FileKind.OPL,
+            url="https://www.openpowerlifting.org/m/bulgarianpf/2402",
+        )
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["№", "Име", "Фамилия", "ГР", "Дивизия", "кат.", "лег"])
+        sheet.append([1, "Станимир", "Данчев", 18, "M-CL-BP", "59", 75])
+        path = Path(self._tmp()) / "p.xlsx"
+        workbook.save(path)
+        call_command("import_protocol", str(path), competition="dupn-2024", verbosity=0)
+        self.assertEqual(competition.results.count(), 1)
+        self.assertFalse(competition.files.filter(kind=FileKind.OPL).exists())
+
+    def test_adding_a_second_file_keeps_it(self):
+        competition = Competition.objects.create(
+            name="Лег", start_date=date(2026, 5, 30), slug="sofia-leg"
+        )
+        CompetitionFile.objects.create(
+            competition=competition, kind=FileKind.OPL, url="https://example.org/m/1"
+        )
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["№", "Име", "Фамилия", "ГР", "Дивизия", "кат.", "лег"])
+        sheet.append([1, "Тест", "Тестов", 24, "M-CL-BP", "93", 100])
+        path = Path(self._tmp()) / "q.xlsx"
+        workbook.save(path)
+        call_command("import_protocol", str(path), competition="sofia-leg", keep=True, verbosity=0)
+        self.assertTrue(competition.files.filter(kind=FileKind.OPL).exists())
+
+    def _tmp(self):
+        import tempfile
+
+        directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, directory, True)
+        return directory

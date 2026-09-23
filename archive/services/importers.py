@@ -59,6 +59,7 @@ _HEADER_ALIASES = {
     "фамилия": "surname",
     "пол": "sex",
     "възраст": "age",
+    "гр": "age",
     "години": "age",
     "отбор": "club",
     "клуб": "club",
@@ -472,7 +473,7 @@ def _row_from_mapping(row, mapping, layout, kind):
     row_equipment = _equipment_in_text(_mapped(row, mapping, "equipment")) or ""
     item = ParsedRow(
         place=_clean_place(_mapped(row, mapping, "place")),
-        raw_name=_mapped(row, mapping, "name"),
+        raw_name=_full_name(row, mapping),
         sex=_sex_label(_mapped(row, mapping, "sex")) or "",
         country=_mapped(row, mapping, "country"),
 
@@ -504,7 +505,7 @@ def _row_from_mapping(row, mapping, layout, kind):
             "deadlift3",
             "deadlift4",
         ):
-            item.attempts[name] = _signed_kg(_mapped(row, mapping, name))
+            item.attempts[name] = _attempt(row, mapping, name)
         item.best_squat = _positive(_mapped(row, mapping, "best_squat")) or _best_of(item, "squat")
         item.best_bench = _positive(_mapped(row, mapping, "best_bench")) or _best_of(item, "bench")
         item.best_deadlift = _positive(_mapped(row, mapping, "best_deadlift")) or _best_of(item, "deadlift")
@@ -541,6 +542,34 @@ def _row_from_mapping(row, mapping, layout, kind):
         if item.best_squat and item.best_bench and item.best_deadlift:
             item.total = item.best_squat + item.best_bench + item.best_deadlift
     return item
+
+
+# A Bulgarian scoresheet marks the lift with √ or × in the labelled column and
+# puts the weight in the unlabelled one beside it. The marks are specific enough
+# that a plain "X", which elsewhere means a failed attempt with no weight
+# recorded, is left alone.
+_GOOD_MARK = {"√", "✓"}
+_BAD_MARK = {"×", "✗"}
+
+
+def _attempt(row, mapping, field_name):
+    index = next((i for i, name in mapping.items() if name == field_name), None)
+    if index is None:
+        return None
+    mark = _cell(row, index).strip()
+    if mark in _GOOD_MARK or mark in _BAD_MARK:
+        weight = _signed_kg(_cell(row, index + 1))
+        if weight is None:
+            return None
+        return -abs(weight) if mark in _BAD_MARK else abs(weight)
+    return _signed_kg(_cell(row, index))
+
+
+def _full_name(row, mapping):
+    """Some protocols keep the given name and the surname in two columns."""
+    given = _mapped(row, mapping, "name").strip()
+    surname = _mapped(row, mapping, "surname").strip()
+    return f"{given} {surname}".strip() if surname else given
 
 
 def _extra_club(row, mapping):

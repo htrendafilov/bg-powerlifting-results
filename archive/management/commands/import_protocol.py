@@ -6,7 +6,7 @@ clicking through it once per meet.
 
 from django.core.management.base import BaseCommand, CommandError
 
-from archive.models import Competition
+from archive.models import Competition, FileKind
 from archive.services.commit import apply_import, prepare_rows
 from archive.services.importers import parse_upload
 
@@ -65,6 +65,12 @@ class Command(BaseCommand):
 
         if options["skip_blocked"] and blocked:
             parsed.rows = ready
+        if not options["keep"]:
+            # The protocol is the source now, so a note pointing at
+            # OpenPowerlifting for these rows would be wrong.
+            dropped = competition.files.filter(kind=FileKind.OPL).delete()[0]
+            if dropped:
+                self.stdout.write(f"  махнат източник OpenPowerlifting: {dropped}")
         summary = apply_import(
             competition, parsed, replace=not options["keep"], **defaults
         )
