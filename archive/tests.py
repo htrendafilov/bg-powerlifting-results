@@ -1208,3 +1208,46 @@ class BrokenDigraphRepairTests(TestCase):
         athlete.refresh_from_db()
         self.assertEqual(athlete.name_bg, "Венцислав Костадинов")
         self.assertEqual(athlete.name_lat, "Ventsislav Kostadinov")
+
+
+class DuplicatesPageTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+
+        self.client.force_login(User.objects.create_superuser("adm", "a@b.bg", "pw-for-tests-only"))
+        self.one = Athlete.objects.create(name_bg="Александър Петров", name_lat="Aleksandar Petrov", sex=Sex.M)
+        self.two = Athlete.objects.create(name_bg="Александър Петров", name_lat="Aleksander Petrov", sex=Sex.M)
+        self.euro = Competition.objects.create(
+            name="European Classic Powerlifting Championships", start_date=date(2021, 12, 3), slug="euro"
+        )
+        self.kard = Competition.objects.create(
+            name="1 кръг, силов трибой с екип", start_date=date(2023, 4, 8), slug="kard"
+        )
+        self._start(self.one, self.kard, "66", Equipment.EQUIPPED, "1", 550)
+        self._start(self.two, self.euro, "59", Equipment.CLASSIC, "2", Decimal("552.5"))
+
+    def _start(self, athlete, competition, weight_class, equipment, place, total):
+        return Result.objects.create(
+            competition=competition, athlete=athlete, raw_name=athlete.name_bg, sex=Sex.M,
+            age_group=AgeGroup.OPEN, equipment=equipment, event=Event.SBD,
+            weight_class=weight_class, place=place, total=total, country="България",
+        )
+
+    def test_the_page_shows_each_start_with_its_meet_and_class(self):
+        page = self.client.get("/admin/archive/athlete/duplicates/")
+        self.assertContains(page, "European Classic Powerlifting Championships")
+        self.assertContains(page, "1 кръг, силов трибой с екип")
+        self.assertContains(page, ">66<")
+        self.assertContains(page, ">59<")
+        self.assertContains(page, "Слей тези двама")
+
+    def test_two_lifters_at_one_meet_are_flagged_and_cannot_be_merged_from_here(self):
+        self._start(self.two, self.kard, "93", Equipment.EQUIPPED, "4", 600)
+        page = self.client.get("/admin/archive/athlete/duplicates/")
+        self.assertContains(page, "значи са различни хора")
+        self.assertNotContains(page, "Слей тези двама")
+
+    def test_the_athlete_page_lists_the_starts(self):
+        page = self.client.get(f"/admin/archive/athlete/{self.two.pk}/change/")
+        self.assertContains(page, "Стартове")
+        self.assertContains(page, "European Classic Powerlifting Championships")

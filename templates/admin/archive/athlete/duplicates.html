@@ -1,31 +1,67 @@
 {% extends "admin/base_site.html" %}
 {% block content %}
   <p>Двойки, които приличат на един и същ човек. Сходството се смята по името;
-     решението е твое — има и различни хора с еднакви имена.</p>
+     решението е твое — има и различни хора с еднакви имена. Стартовете са тук,
+     за да се види дали кариерите се връзват.</p>
   {% if pairs %}
-    <table>
-      <thead><tr><th>Прилика</th><th>Запис 1</th><th>Стартове</th><th>Запис 2</th><th>Стартове</th><th></th></tr></thead>
-      <tbody>
-        {% for pair in pairs %}
-          <tr>
-            <td>{{ pair.score }}%</td>
-            <td><a href="{% url 'admin:archive_athlete_change' pair.one.pk %}">{{ pair.one.display_name }}</a></td>
-            <td>{{ pair.one_starts }}</td>
-            <td><a href="{% url 'admin:archive_athlete_change' pair.two.pk %}">{{ pair.two.display_name }}</a></td>
-            <td>{{ pair.two_starts }}</td>
-            <td>
-              <form method="post" action="{% url 'admin:archive_athlete_changelist' %}">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="merge_selected">
-                <input type="hidden" name="_selected_action" value="{{ pair.one.pk }}">
-                <input type="hidden" name="_selected_action" value="{{ pair.two.pk }}">
-                <input type="submit" value="Слей">
-              </form>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    {% for pair in pairs %}
+      <div class="module" style="margin-bottom:18px">
+        <h2>
+          {{ pair.score }}% — {{ pair.one.display_name }} ~ {{ pair.two.display_name }}
+          {% if pair.shared %}
+            <span style="color:#c33"> · и двамата са на {{ pair.shared.0.name }}, значи са различни хора</span>
+          {% endif %}
+        </h2>
+        <table style="width:100%">
+          <thead>
+            <tr><th colspan="6">
+              <a href="{% url 'admin:archive_athlete_change' pair.one.pk %}">{{ pair.one.display_name }}</a>
+              <small>{{ pair.one.name_lat }} · {{ pair.one.get_sex_display }}{% if pair.one.birth_year %} · {{ pair.one.birth_year }}{% endif %}</small>
+            </th></tr>
+            <tr><th>Дата</th><th>Състезание</th><th>Кат.</th><th>Възраст</th><th>Екип.</th><th>Място / тотал</th></tr>
+          </thead>
+          <tbody>
+            {% for row in pair.one_rows %}
+              <tr>
+                <td>{{ row.competition.start_date|date:"d.m.Y" }}</td>
+                <td>{{ row.competition.name }}</td>
+                <td>{{ row.weight_class|default:"–" }}</td>
+                <td>{{ row.get_age_group_display }}</td>
+                <td>{{ row.get_equipment_display }}</td>
+                <td>{{ row.place|default:"–" }} / {{ row.total|default:"–" }}</td>
+              </tr>
+            {% empty %}<tr><td colspan="6">Няма стартове.</td></tr>{% endfor %}
+          </tbody>
+          <thead>
+            <tr><th colspan="6">
+              <a href="{% url 'admin:archive_athlete_change' pair.two.pk %}">{{ pair.two.display_name }}</a>
+              <small>{{ pair.two.name_lat }} · {{ pair.two.get_sex_display }}{% if pair.two.birth_year %} · {{ pair.two.birth_year }}{% endif %}</small>
+            </th></tr>
+          </thead>
+          <tbody>
+            {% for row in pair.two_rows %}
+              <tr>
+                <td>{{ row.competition.start_date|date:"d.m.Y" }}</td>
+                <td>{{ row.competition.name }}</td>
+                <td>{{ row.weight_class|default:"–" }}</td>
+                <td>{{ row.get_age_group_display }}</td>
+                <td>{{ row.get_equipment_display }}</td>
+                <td>{{ row.place|default:"–" }} / {{ row.total|default:"–" }}</td>
+              </tr>
+            {% empty %}<tr><td colspan="6">Няма стартове.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+        {% if not pair.shared %}
+          <form method="post" action="{% url 'admin:archive_athlete_changelist' %}" style="padding:8px">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="merge_selected">
+            <input type="hidden" name="_selected_action" value="{{ pair.one.pk }}">
+            <input type="hidden" name="_selected_action" value="{{ pair.two.pk }}">
+            <input type="submit" value="Слей тези двама" class="default">
+          </form>
+        {% endif %}
+      </div>
+    {% endfor %}
   {% else %}
     <p>Няма намерени двойки.</p>
   {% endif %}

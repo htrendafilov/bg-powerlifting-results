@@ -21,6 +21,29 @@ class PhotoInline(admin.TabularInline):
     extra = 0
 
 
+class StartInline(admin.TabularInline):
+    """The starts, for reading. Editing one is done from Резултати."""
+
+    model = Result
+    extra = 0
+    can_delete = False
+    show_change_link = True
+    verbose_name_plural = "Стартове"
+    fields = ("meet", "weight_class", "age_group", "equipment", "event", "place", "total", "best_bench")
+    readonly_fields = fields
+    ordering = ("competition__start_date",)
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description="Състезание")
+    def meet(self, obj):
+        return f"{obj.competition.start_date:%d.%m.%Y}  {obj.competition.name}"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("competition")
+
+
 class FileInline(admin.TabularInline):
     model = CompetitionFile
     extra = 0
@@ -31,7 +54,7 @@ class AthleteAdmin(admin.ModelAdmin):
     list_display = ("display_name", "needs_check", "sex", "birth_year", "start_count", "years", "name_lat")
     list_filter = ("name_bg_auto", "sex", "adult_confirmed")
     search_fields = ("name_bg", "name_lat")
-    inlines = [PhotoInline]
+    inlines = [StartInline, PhotoInline]
     actions = ["merge_selected"]
 
     def get_queryset(self, request):
@@ -101,6 +124,25 @@ class AthleteAdmin(admin.ModelAdmin):
             },
         )
 
+    @staticmethod
+    def _starts(athlete):
+        return list(
+            athlete.results.select_related("competition").order_by("competition__start_date")
+        )
+
+    def _pair(self, score, one, two):
+        left, right = self._starts(one), self._starts(two)
+        shared = {r.competition_id for r in left} & {r.competition_id for r in right}
+        return {
+            "score": round(score * 100),
+            "one": one,
+            "two": two,
+            "one_rows": left,
+            "two_rows": right,
+            # Two lifters at the same meet are two people, whatever the names say.
+            "shared": [r.competition for r in left if r.competition_id in shared][:1],
+        }
+
     def duplicates_view(self, request):
         pairs = duplicate_candidates()
         return render(
@@ -109,10 +151,7 @@ class AthleteAdmin(admin.ModelAdmin):
             {
                 **self.admin_site.each_context(request),
                 "title": "Възможни дубликати",
-                "pairs": [
-                    {"score": round(score * 100), "one": one, "two": two, "onestarts_total": one.results.count(), "twostarts_total": two.results.count()}
-                    for score, one, two in pairs
-                ],
+                "pairs": [self._pair(score, one, two) for score, one, two in pairs],
             },
         )
 
