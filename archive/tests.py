@@ -610,8 +610,8 @@ class BulgarianProtocolTests(TestCase):
             competition, parsed, default_sex="", default_equipment="auto",
             default_event="auto", replace=True,
         )
-        self.assertEqual(summary["created"], 0)  # blocked rows stop the whole import
-        self.assertGreater(len(ready), 60)
+        self.assertEqual(summary["created"], 96)
+        self.assertEqual(len(ready), 96)
         self.assertEqual(Record.objects.count(), 0)
 
 
@@ -1083,3 +1083,73 @@ class NonScoringPlaceTests(TestCase):
         self.assertEqual(_clean_place("DSQ"), "DQ")
         self.assertEqual(_clean_place("DNS"), "NS")
         self.assertEqual(_clean_place("G"), "G")
+
+
+class DerivedRowFieldsTests(TestCase):
+    def _sheet(self, header, rows):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(header)
+        for row in rows:
+            sheet.append(row)
+        return _bytes(workbook)
+
+    def test_the_division_codes_the_protocols_use(self):
+        from archive.services.importers import _division_label
+
+        for code, expected in (
+            ("F-Sj", AgeGroup.SUBJUNIOR), ("M-Sj", AgeGroup.SUBJUNIOR),
+            ("S-JR", AgeGroup.SUBJUNIOR), ("Sub-Junior", AgeGroup.SUBJUNIOR),
+            ("JR", AgeGroup.JUNIOR), ("Junior", AgeGroup.JUNIOR),
+            ("M-O", AgeGroup.OPEN), ("Open", AgeGroup.OPEN),
+            ("M1", AgeGroup.M1), ("M-M2", AgeGroup.M2), ("M-M4", AgeGroup.M4),
+        ):
+            self.assertEqual(_division_label(code), expected, code)
+
+    def test_a_missing_weight_class_comes_from_the_bodyweight(self):
+        data = self._sheet(
+            ["Място", "Име", "Пол", "Дивизия", "Лично тегло", "Тегл. кат.", "Най-доб.лег"],
+            [[1, "Янек Кондев", "M", "Open", 81.2, "", 150]],
+        )
+        parsed = parse_upload("p.xlsx", data)
+        ready, blocked = prepare_rows(
+            parsed, default_sex="", default_equipment=Equipment.CLASSIC,
+            default_event="auto", meet_date=date(2025, 5, 31),
+        )
+        self.assertEqual(blocked, [])
+        self.assertEqual(ready[0].weight_class, "83")
+
+    def test_a_missing_division_comes_from_the_age_in_years(self):
+        data = self._sheet(
+            ["Класиране", "Име", "Пол", "Възраст", "Дивизия", "Категория", "Най-доб.лег"],
+            [[1, "Тест Тестов", "M", 45, "", "93", 150]],
+        )
+        parsed = parse_upload("p.xlsx", data)
+        ready, _ = prepare_rows(
+            parsed, default_sex="", default_equipment=Equipment.CLASSIC, default_event="auto"
+        )
+        self.assertEqual(ready[0].age_group, AgeGroup.M1)
+
+    def test_a_club_points_line_is_not_a_lifter(self):
+        data = self._sheet(
+            ["Място", "Име", "Отбор", "Дивизия", "Категория", "Най-доб.лег"],
+            [
+                [1, "Истински Състезател", "НСА", "Open", "93", 150],
+                [2, "Стренгт Скуад  12+7+12 =80", "", "", "", ""],
+            ],
+        )
+        parsed = parse_upload("p.xlsx", data)
+        self.assertEqual(len(parsed.rows), 1)
+        self.assertEqual(parsed.skipped, 1)
+        self.assertEqual(parsed.rows[0].raw_name, "Истински Състезател")
+
+    def test_a_row_the_parser_could_not_read_is_reported_not_dropped(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["PL.", "Name", "1 Att.", "2 Att.", "3 Att.", "1 Att.", "2 Att.", "3 Att.", "RESULT"])
+        sheet.append(["Open"])
+        sheet.append(["- 93 kg"])
+        sheet.append([1, "Ivanov Ivan", 100, 110, 120, 130, 140, 150, 270])
+        parsed = parse_upload("odd.xlsx", _bytes(workbook))
+        self.assertEqual(len(parsed.rows), 1)
+        self.assertTrue(parsed.rows[0].errors)

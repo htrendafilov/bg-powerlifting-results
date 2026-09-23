@@ -58,6 +58,8 @@ _HEADER_ALIASES = {
     "имеифамилия": "name",
     "фамилия": "surname",
     "пол": "sex",
+    "възраст": "age",
+    "години": "age",
     "отбор": "club",
     "клуб": "club",
     "дивизия": "division",
@@ -76,12 +78,14 @@ _HEADER_ALIASES = {
     "клек": "best_squat",
     "найдобрклек": "best_squat",
     "найдобклек": "best_squat",
+    "найдобърклек": "best_squat",
     "лег1": "bench1",
     "лег2": "bench2",
     "лег3": "bench3",
     "лег": "best_bench",
     "найдобрлег": "best_bench",
     "найдоблег": "best_bench",
+    "найдобърлег": "best_bench",
     "тяга1": "deadlift1",
     "тяга2": "deadlift2",
     "тяга3": "deadlift3",
@@ -95,6 +99,8 @@ _HEADER_ALIASES = {
     "найдобрамтяга": "best_deadlift",
     "найдобмтяга": "best_deadlift",
     "найдобратяга": "best_deadlift",
+    "найдобърмтяга": "best_deadlift",
+    "найдобратягa": "best_deadlift",
     "тотал": "total",
     "тоталкг": "total",
     "трибой": "total",
@@ -116,6 +122,7 @@ class ParsedRow:
     event: str = ""
     weight_class: str = ""
     bodyweight: Decimal | None = None
+    age: Decimal | None = None
     club: str = ""
     nation_raw: str = ""
     lot: str = ""
@@ -310,6 +317,10 @@ def _parse_table(title, rows):
                 parsed.skipped_sections.append(ignoring)
             continue
         item = _row_from_mapping(row, mapping, layout, kind)
+        # A row that could not be read at all is reported, not dropped.
+        if not item.errors and not _is_result_row(item):
+            parsed.skipped += 1
+            continue
         item.age_group = item.age_group or division
         item.event = item.event or sheet_event
         item.sex = item.sex or sex
@@ -423,6 +434,19 @@ def _metadata(rows):
     return found
 
 
+# A club's points line sits in the results table with a rank and a name but no
+# lifts. Only a lifter who did not start carries a code instead of a result.
+_NO_LIFT_PLACES = {"NS", "DQ", "DD", "G", "DNS", "DSQ"}
+
+
+def _is_result_row(item):
+    if (item.place or "").strip().upper() in _NO_LIFT_PLACES:
+        return True
+    if any(v is not None for v in (item.best_squat, item.best_bench, item.best_deadlift, item.total)):
+        return True
+    return any(value is not None for value in item.attempts.values())
+
+
 def _cell(row, index):
     return row[index] if index < len(row) else ""
 
@@ -457,6 +481,7 @@ def _row_from_mapping(row, mapping, layout, kind):
         event=_event_code(_mapped(row, mapping, "event")),
         weight_class=normalize_weight_class(_mapped(row, mapping, "weight_class")),
         bodyweight=_decimal(_mapped(row, mapping, "bodyweight")),
+        age=_decimal(_mapped(row, mapping, "age")),
         club=_mapped(row, mapping, "club") or _extra_club(row, mapping),
         nation_raw=_mapped(row, mapping, "nation"),
         lot=_mapped(row, mapping, "lot"),
@@ -582,7 +607,9 @@ def _division_label(value):
         "t1": AgeGroup.SUBJUNIOR,
         "t2": AgeGroup.SUBJUNIOR,
         "t3": AgeGroup.SUBJUNIOR,
+        "sj": AgeGroup.SUBJUNIOR,
         "sjr": AgeGroup.SUBJUNIOR,
+        "sjnr": AgeGroup.SUBJUNIOR,
         "subjunior": AgeGroup.SUBJUNIOR,
         "subjuniors": AgeGroup.SUBJUNIOR,
         "до18": AgeGroup.SUBJUNIOR,

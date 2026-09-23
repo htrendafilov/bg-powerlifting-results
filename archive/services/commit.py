@@ -3,9 +3,19 @@ from decimal import Decimal
 from django.core.files.base import File
 from django.db import transaction
 
-from archive.models import BG_COUNTRIES, Athlete, CompetitionFile, Event, FileKind, MeetLevel, Result
+from archive.models import (
+    BG_COUNTRIES,
+    AgeGroup,
+    Athlete,
+    CompetitionFile,
+    Event,
+    FileKind,
+    MeetLevel,
+    Result,
+)
 from archive.services.names import athlete_name_key, is_cyrillic, transliterate
 from archive.services.records import recalculate_records
+from archive.services.weight_classes import weight_class_for
 
 ATTEMPT_FIELDS = [
     "squat1",
@@ -30,6 +40,7 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
         default_equipment=default_equipment,
         default_event=default_event,
         meet_level=competition.level,
+        meet_date=competition.start_date,
     )
     if blocked:
         return {"created": 0, "athletes": 0, "blocked": blocked}
@@ -79,6 +90,21 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
     return {"created": created, "athletes": created_athletes, "blocked": []}
 
 
+# IPF age divisions, used when a protocol gives the age in years but no group.
+_AGE_BANDS = [(18, AgeGroup.SUBJUNIOR), (23, AgeGroup.JUNIOR), (39, AgeGroup.OPEN),
+              (49, AgeGroup.M1), (59, AgeGroup.M2), (69, AgeGroup.M3)]
+
+
+def _age_group_for(age):
+    years = int(age)
+    if years < 13 or years > 100:
+        return ""
+    for limit, group in _AGE_BANDS:
+        if years <= limit:
+            return group
+    return AgeGroup.M4
+
+
 def _country_for(value, home_country):
     text = (value or "").strip()
     if not text:
@@ -86,7 +112,8 @@ def _country_for(value, home_country):
     return "България" if text.lower() in BG_COUNTRIES else text
 
 
-def prepare_rows(parsed, *, default_sex, default_equipment, default_event, meet_level=MeetLevel.NATIONAL):
+def prepare_rows(parsed, *, default_sex, default_equipment, default_event,
+                 meet_level=MeetLevel.NATIONAL, meet_date=None):
     ready = []
     blocked = []
     for index, item in enumerate(parsed.rows, start=1):
@@ -99,6 +126,12 @@ def prepare_rows(parsed, *, default_sex, default_equipment, default_event, meet_
             item.event = default_event
         elif item.event == "auto":
             item.event = ""
+        if not item.age_group and item.age:
+            item.age_group = _age_group_for(item.age)
+        if not item.weight_class and item.bodyweight and meet_date:
+            item.weight_class = weight_class_for(
+                item.sex, item.bodyweight, meet_date, item.age_group
+            )
         problems = list(item.errors)
         if not item.sex:
             problems.append("Няма пол. Избери пол в импорта.")
