@@ -191,7 +191,9 @@ table.results th { font-size: 0.78rem; letter-spacing: 0.03em; color: var(--mute
 
 /* The meet page gives the results as much of the screen as it can: the title
    block is tightened and the protocol links collapse to one line. */
-body.meet main { padding: 8px 16px 12px; }
+/* The results table is wider than a column of text, so the meet page uses the
+   whole window instead of the centred column the reading pages want. */
+body.meet main { max-width: none; padding: 8px 16px 12px; }
 body.meet .site-header { padding: 8px 20px; }
 
 /* Title and the date/city line share a row, and each filter puts its label

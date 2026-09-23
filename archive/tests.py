@@ -1434,3 +1434,14 @@ class PlaceColumnTests(TestCase):
         parsed = self._sheet([[i, 1, f"Име{i}", f"Фам{i}", "НСА", 24, "M-CL-BP", str(50 + i), 100]
                               for i in range(1, 7)])
         self.assertEqual({row.place for row in parsed.rows}, {"1"})
+
+
+class MeetPageWidthTests(TestCase):
+    def test_the_meet_page_is_marked_for_the_full_width_layout(self):
+        Competition.objects.create(name="Турнир", start_date=date(2025, 5, 1), slug="w")
+        page = self.client.get("/competitions/w/")
+        self.assertContains(page, '<body class="meet">')
+
+    def test_the_reading_pages_keep_the_centred_column(self):
+        for path in ("/", "/competitions/", "/athletes/", "/records/"):
+            self.assertContains(self.client.get(path), '<body class="">', msg_prefix=path)
