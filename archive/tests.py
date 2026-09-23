@@ -1464,7 +1464,8 @@ class ColumnBandingTests(TestCase):
         page = self.client.get("/competitions/band/").content.decode()
         for name in ("lift-squat", "lift-bench", "lift-deadlift", "col-total"):
             self.assertIn(name, page, name)
-        self.assertEqual(page.count('class="lift-bench"'), 3)
+        # three attempt cells plus the heading that spans them
+        self.assertEqual(page.count('class="lift-bench"'), 4)
 
     def test_a_bench_only_meet_bands_nothing_it_did_not_contest(self):
         self.competition.results.update(
