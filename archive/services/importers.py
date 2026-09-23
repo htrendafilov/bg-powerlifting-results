@@ -177,6 +177,7 @@ class HeaderLayout:
     attempts: list = field(default_factory=list)
     results: list = field(default_factory=list)
     divisions: list = field(default_factory=list)
+    places: list = field(default_factory=list)
 
 
 def parse_upload(filename, payload):
@@ -259,6 +260,7 @@ def _parse_table(title, rows):
     if header_index is None:
         return ParsedFile(kind="")
     mapping = layout.mapping
+    _choose_place_column(layout, rows[header_index + 1 :])
     kind = "goodlift" if layout.attempts else "opl"
     meta = _metadata(rows[:header_index])
     blob = " ".join(cell for row in rows[: header_index + 1] for cell in row if cell)
@@ -385,6 +387,25 @@ def _find_header(rows):
     return None, HeaderLayout()
 
 
+def _choose_place_column(layout, body):
+    """Some protocols head both the running number and the placing "№".
+
+    The placing starts again at 1 in every class, so it repeats; the running
+    number is unique down the whole sheet. That is what tells them apart.
+    """
+    if not layout.places:
+        return
+    chosen = layout.places[0]
+    if len(layout.places) > 1:
+        def repeats(index):
+            values = [_cell(row, index).strip() for row in body]
+            values = [v for v in values if v and _is_place(v)]
+            return len(set(values)) if values else 10**6
+
+        chosen = min(layout.places, key=repeats)
+    layout.mapping[chosen] = "place"
+
+
 def _header_layout(normalized):
     layout = HeaderLayout()
     for index, header in enumerate(normalized):
@@ -399,6 +420,9 @@ def _header_layout(normalized):
             continue
         if field_name == "division":
             layout.divisions.append(index)
+            continue
+        if field_name == "place":
+            layout.places.append(index)
             continue
         if field_name not in layout.mapping.values():
             layout.mapping[index] = field_name

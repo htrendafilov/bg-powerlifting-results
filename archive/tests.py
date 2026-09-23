@@ -1402,3 +1402,35 @@ class ProtocolReplacesOplSourceTests(TestCase):
         directory = tempfile.mkdtemp()
         self.addCleanup(__import__("shutil").rmtree, directory, True)
         return directory
+
+
+class PlaceColumnTests(TestCase):
+    def _sheet(self, rows):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["№", "№", "Име", "Фамилия", "Отбор", "ГР", "Дивизия", "кат.", "лег"])
+        for row in rows:
+            sheet.append(row)
+        return parse_upload("p.xlsx", _bytes(workbook))
+
+    def test_the_placing_is_taken_over_the_running_number(self):
+        parsed = self._sheet([
+            [1, 1, "Първи", "Един", "НСА", 24, "M-CL-BP", "93", 150],
+            [2, 2, "Втори", "Два", "НСА", 24, "M-CL-BP", "93", 140],
+            [3, 1, "Трети", "Три", "НСА", 24, "M-CL-BP", "105", 200],
+            [4, 2, "Четвърти", "Четири", "НСА", 24, "M-CL-BP", "105", 190],
+        ])
+        self.assertEqual([row.place for row in parsed.rows], ["1", "2", "1", "2"])
+
+    def test_a_single_number_column_is_still_the_place(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["Място", "Име", "Дивизия", "кат.", "Най-доб.лег"])
+        sheet.append([3, "Един Единов", "Open", "93", 150])
+        parsed = parse_upload("p.xlsx", _bytes(workbook))
+        self.assertEqual(parsed.rows[0].place, "3")
+
+    def test_the_running_number_is_not_used_when_it_never_repeats(self):
+        parsed = self._sheet([[i, 1, f"Име{i}", f"Фам{i}", "НСА", 24, "M-CL-BP", str(50 + i), 100]
+                              for i in range(1, 7)])
+        self.assertEqual({row.place for row in parsed.rows}, {"1"})
