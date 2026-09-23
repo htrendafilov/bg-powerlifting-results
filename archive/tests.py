@@ -1482,3 +1482,14 @@ class ColumnBandingTests(TestCase):
         page = self.client.get(f"/athletes/{athlete.slug}/").content.decode()
         for name in ("lift-squat", "lift-bench", "lift-deadlift", "col-total"):
             self.assertIn(name, page, name)
+
+
+class FilterFormLayoutTests(TestCase):
+    def test_the_records_filter_and_its_button_share_one_row(self):
+        page = self.client.get("/records/").content.decode()
+        self.assertIn('<form class="filters" method="get">', page)
+        self.assertIn("<p>", page)  # Django's as_p wraps each field
+
+    def test_the_stylesheet_flattens_those_paragraphs(self):
+        css = (Path("archive/static/archive/site.css")).read_text(encoding="utf-8")
+        self.assertIn(".filters p { margin: 0; }", css)

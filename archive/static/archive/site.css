@@ -78,6 +78,10 @@ h2 { font-size: 1.15rem; margin: 28px 0 8px; }
 
 .filters, .stack p { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
 
+/* Django wraps each field of a form rendered with as_p in a <p>, whose default
+   margin would otherwise push the fields a line above the submit button. */
+.filters p { margin: 0; }
+
 label { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); }
 
 input, select, button {
