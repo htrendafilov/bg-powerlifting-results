@@ -26,6 +26,7 @@ from archive.models import (
 from archive.services.commit import athlete_for
 from archive.services.names import transliterate
 from archive.services.records import recalculate_records
+from archive.services.weight_classes import weight_class_for
 
 EVENTS = {"SBD": Event.SBD, "B": Event.B, "D": Event.D, "BD": Event.PP}
 EQUIPMENT = {
@@ -192,7 +193,9 @@ class Command(BaseCommand):
             age_group=self._age_group(row),
             equipment=EQUIPMENT[row["Equipment"]],
             event=EVENTS[row["Event"]],
-            weight_class=row["WeightClassKg"],
+            weight_class=row["WeightClassKg"] or weight_class_for(
+                row["Sex"], number("BodyweightKg"), competition.start_date, self._age_group(row)
+            ),
             bodyweight=number("BodyweightKg"),
             place=row["Place"],
             best_squat=number("Best3SquatKg"),

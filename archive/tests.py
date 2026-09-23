@@ -1,6 +1,7 @@
 import re
 from collections import Counter
 from datetime import date
+from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from archive.services.commit import apply_import, prepare_rows
 from archive.services.importers import _equipment_in_text, parse_upload
 from archive.services.merge import duplicate_candidates, merge_athletes
 from archive.services.visibility import visible_athletes, visible_competitions, visible_results
+from archive.services.weight_classes import weight_class_for
 from archive.services.names import athlete_name_key, reverse_transliterate, transliterate
 from archive.services.records import recalculate_records
 
@@ -970,3 +972,65 @@ class MergeNamePreferenceTests(TestCase):
         from_protocol.refresh_from_db()
         self.assertEqual(from_protocol.name_bg, "Роберт Михайлов")
         self.assertFalse(from_protocol.name_bg_auto)
+
+
+class WeightClassFromBodyweightTests(TestCase):
+    def test_the_class_is_the_first_limit_the_lifter_makes(self):
+        modern = date(2026, 1, 31)
+        self.assertEqual(weight_class_for(Sex.M, Decimal("92.58"), modern), "93")
+        self.assertEqual(weight_class_for(Sex.M, Decimal("93.00"), modern), "93")
+        self.assertEqual(weight_class_for(Sex.M, Decimal("93.01"), modern), "105")
+        self.assertEqual(weight_class_for(Sex.F, Decimal("63.25"), modern), "69")
+        self.assertEqual(weight_class_for(Sex.F, Decimal("63.00"), modern), "63")
+
+    def test_a_lifter_over_the_top_class_lands_in_the_plus(self):
+        self.assertEqual(weight_class_for(Sex.M, Decimal("140"), date(2026, 1, 1)), "120+")
+        self.assertEqual(weight_class_for(Sex.F, Decimal("95"), date(2026, 1, 1)), "84+")
+
+    def test_a_result_from_before_2011_uses_the_old_classes(self):
+        old = date(2000, 5, 20)
+        self.assertEqual(weight_class_for(Sex.M, Decimal("149.4"), old), "125+")
+        self.assertEqual(weight_class_for(Sex.M, Decimal("82.4"), old), "82.5")
+        self.assertEqual(weight_class_for(Sex.F, Decimal("59"), old), "60")
+
+    def test_the_lightest_class_belongs_to_the_youngest_groups(self):
+        day = date(2026, 1, 1)
+        self.assertEqual(weight_class_for(Sex.M, Decimal("52"), day, AgeGroup.SUBJUNIOR), "53")
+        self.assertEqual(weight_class_for(Sex.M, Decimal("52"), day, AgeGroup.OPEN), "59")
+
+    def test_nothing_is_invented_without_a_bodyweight(self):
+        self.assertEqual(weight_class_for(Sex.M, None, date(2026, 1, 1)), "")
+
+    def test_the_command_fills_the_gap_and_the_result_reaches_the_records(self):
+        athlete = Athlete.objects.create(name_bg="Емил Кръстев", sex=Sex.M)
+        competition = Competition.objects.create(
+            name="Sheffield Powerlifting Championships", start_date=date(2026, 1, 31),
+            slug="sheffield-2026", level=MeetLevel.INTERNATIONAL, city="Sheffield",
+        )
+        result = Result.objects.create(
+            competition=competition, athlete=athlete, raw_name="Emil Krastev", sex=Sex.M,
+            age_group=AgeGroup.OPEN, equipment=Equipment.CLASSIC, event=Event.SBD,
+            weight_class="", bodyweight=Decimal("92.58"), country="България",
+            best_squat=315, best_bench=Decimal("237.5"), best_deadlift=Decimal("367.5"), total=920,
+        )
+        recalculate_records()
+        self.assertEqual(Record.objects.count(), 0)
+
+        call_command("fill_weight_classes", verbosity=0)
+        result.refresh_from_db()
+        self.assertEqual(result.weight_class, "93")
+        self.assertEqual(
+            Record.objects.get(lift=Lift.TOTAL, weight_class="93", valid_to=None).value_kg, 920
+        )
+
+    def test_a_class_already_on_the_row_is_left_alone(self):
+        athlete = Athlete.objects.create(name_bg="Тест", sex=Sex.M)
+        competition = Competition.objects.create(name="T", start_date=date(2026, 1, 1), slug="t")
+        result = Result.objects.create(
+            competition=competition, athlete=athlete, sex=Sex.M, age_group=AgeGroup.OPEN,
+            equipment=Equipment.CLASSIC, event=Event.SBD, weight_class="105",
+            bodyweight=Decimal("92.5"), country="България", best_bench=100,
+        )
+        call_command("fill_weight_classes", verbosity=0)
+        result.refresh_from_db()
+        self.assertEqual(result.weight_class, "105")
