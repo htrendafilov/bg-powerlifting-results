@@ -97,12 +97,8 @@ CATALOG = [
         "start": date(2022, 9, 10),
         "end": date(2022, 9, 11),
         "city": "Горна Оряховица",
-        "links": [
-            (
-                "Протокол",
-                "https://drive.google.com/file/d/1Vaa9h-kUtZiJ6lprq7Vamv_BfW7ZJfK_/view",
-            )
-        ],
+        # Продълженото от федерацията тук сочи към протокола на Дупница 2023.
+        "links": [],
     },
     {
         "slug": "2023-kardzhali-ekip",
@@ -144,7 +140,14 @@ CATALOG = [
         "start": date(2023, 7, 1),
         "end": date(2023, 7, 2),
         "city": "Дупница",
-        "links": [],
+        # Намерен през страницата на федерацията във Facebook; на сайта им
+        # е закачен по погрешка за Горна Оряховица 2022.
+        "links": [
+            (
+                "Протокол",
+                "https://drive.google.com/file/d/1Vaa9h-kUtZiJ6lprq7Vamv_BfW7ZJfK_/view",
+            )
+        ],
     },
     {
         "slug": "2023-haskovo-leg",
