@@ -82,10 +82,10 @@
               <th>Възраст</th>
               <th>Екип.</th>
               <th>Т.т.</th>
-              {% if show_squat %}<th colspan="3">Клек</th>{% endif %}
-              {% if show_bench %}<th colspan="3">Лег</th>{% endif %}
-              {% if show_deadlift %}<th colspan="3">Тяга</th>{% endif %}
-              {% if show_total %}<th>Тотал</th>{% endif %}
+              {% if show_squat %}<th colspan="3" class="lift-squat">Клек</th>{% endif %}
+              {% if show_bench %}<th colspan="3" class="lift-bench">Лег</th>{% endif %}
+              {% if show_deadlift %}<th colspan="3" class="lift-deadlift">Тяга</th>{% endif %}
+              {% if show_total %}<th class="col-total">Тотал</th>{% endif %}
               <th>Точки</th>
             </tr>
           </thead>
@@ -105,21 +105,21 @@
                   <td>{{ result.get_equipment_display }}</td>
                   <td>{{ result.bodyweight|kg }}</td>
                   {% if show_squat %}
-                    <td>{% attempt result.squat1 %}</td>
-                    <td>{% attempt result.squat2 %}</td>
-                    <td>{% attempt result.squat3 %}</td>
+                    <td class="lift-squat">{% attempt result.squat1 %}</td>
+                    <td class="lift-squat">{% attempt result.squat2 %}</td>
+                    <td class="lift-squat">{% attempt result.squat3 %}</td>
                   {% endif %}
                   {% if show_bench %}
-                    <td>{% attempt result.bench1 %}</td>
-                    <td>{% attempt result.bench2 %}</td>
-                    <td>{% attempt result.bench3 %}</td>
+                    <td class="lift-bench">{% attempt result.bench1 %}</td>
+                    <td class="lift-bench">{% attempt result.bench2 %}</td>
+                    <td class="lift-bench">{% attempt result.bench3 %}</td>
                   {% endif %}
                   {% if show_deadlift %}
-                    <td>{% attempt result.deadlift1 %}</td>
-                    <td>{% attempt result.deadlift2 %}</td>
-                    <td>{% attempt result.deadlift3 %}</td>
+                    <td class="lift-deadlift">{% attempt result.deadlift1 %}</td>
+                    <td class="lift-deadlift">{% attempt result.deadlift2 %}</td>
+                    <td class="lift-deadlift">{% attempt result.deadlift3 %}</td>
                   {% endif %}
-                  {% if show_total %}<td>{{ result.total|kg }}</td>{% endif %}
+                  {% if show_total %}<td class="col-total">{{ result.total|kg }}</td>{% endif %}
                   <td>{{ result.points|kg }}</td>
                 </tr>
               {% endfor %}

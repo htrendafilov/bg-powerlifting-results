@@ -25,7 +25,7 @@
       <table class="results">
         <thead>
           <tr>
-            <th>Дата</th><th>Състезание</th><th>Дисциплина</th><th>Кат.</th><th>Клек</th><th>Лег</th><th>Тяга</th><th>Тотал</th><th>Място</th>
+            <th>Дата</th><th>Състезание</th><th>Дисциплина</th><th>Кат.</th><th class="lift-squat">Клек</th><th class="lift-bench">Лег</th><th class="lift-deadlift">Тяга</th><th class="col-total">Тотал</th><th>Място</th>
           </tr>
         </thead>
         <tbody>
@@ -35,10 +35,10 @@
               <td><a href="{% url 'competition_detail' result.competition.slug %}">{{ result.competition.name }}</a></td>
               <td>{{ result.get_event_display }} · {{ result.get_equipment_display }}</td>
               <td>{{ result.weight_class }}</td>
-              <td>{{ result.best_squat|kg }}</td>
-              <td>{{ result.best_bench|kg }}</td>
-              <td>{{ result.best_deadlift|kg }}</td>
-              <td>{{ result.total|kg }}</td>
+              <td class="lift-squat">{{ result.best_squat|kg }}</td>
+              <td class="lift-bench">{{ result.best_bench|kg }}</td>
+              <td class="lift-deadlift">{{ result.best_deadlift|kg }}</td>
+              <td class="col-total">{{ result.total|kg }}</td>
               <td>{{ result.place|default:"–" }}</td>
             </tr>
           {% endfor %}

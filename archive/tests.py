@@ -1445,3 +1445,39 @@ class MeetPageWidthTests(TestCase):
     def test_the_reading_pages_keep_the_centred_column(self):
         for path in ("/", "/competitions/", "/athletes/", "/records/"):
             self.assertContains(self.client.get(path), '<body class="">', msg_prefix=path)
+
+
+class ColumnBandingTests(TestCase):
+    def setUp(self):
+        self.competition = Competition.objects.create(
+            name="Турнир", start_date=date(2025, 5, 1), slug="band"
+        )
+        athlete = Athlete.objects.create(name_bg="Тест Тестов", sex=Sex.M)
+        Result.objects.create(
+            competition=self.competition, athlete=athlete, raw_name="Тест Тестов", sex=Sex.M,
+            age_group=AgeGroup.OPEN, equipment=Equipment.CLASSIC, event=Event.SBD,
+            weight_class="93", country="България", squat1=200, bench1=150, deadlift1=250,
+            best_squat=200, best_bench=150, best_deadlift=250, total=600,
+        )
+
+    def test_each_lift_and_the_total_carry_their_own_class(self):
+        page = self.client.get("/competitions/band/").content.decode()
+        for name in ("lift-squat", "lift-bench", "lift-deadlift", "col-total"):
+            self.assertIn(name, page, name)
+        self.assertEqual(page.count('class="lift-bench"'), 3)
+
+    def test_a_bench_only_meet_bands_nothing_it_did_not_contest(self):
+        self.competition.results.update(
+            event=Event.B, best_squat=None, best_deadlift=None, squat1=None,
+            deadlift1=None, total=None,
+        )
+        page = self.client.get("/competitions/band/").content.decode()
+        self.assertIn("lift-bench", page)
+        self.assertNotIn("lift-squat", page)
+        self.assertNotIn("col-total", page)
+
+    def test_the_athlete_page_bands_the_same_way(self):
+        athlete = Athlete.objects.get(name_bg="Тест Тестов")
+        page = self.client.get(f"/athletes/{athlete.slug}/").content.decode()
+        for name in ("lift-squat", "lift-bench", "lift-deadlift", "col-total"):
+            self.assertIn(name, page, name)

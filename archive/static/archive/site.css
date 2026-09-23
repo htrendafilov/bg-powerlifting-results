@@ -223,3 +223,23 @@ body.meet .filters select, body.meet .filters button { padding: 3px 6px; font-si
 }
 
 .files-label { color: var(--muted); }
+
+/* Reading across a row of twelve attempts is easier when the lifts are banded.
+   Squat and deadlift keep the table's own colour and the bench sits between
+   them a shade darker, so the eye lands on the right block without the page
+   turning into stripes. The total is darker still, because it is the number
+   most people came for. The tints are opaque rather than translucent: these
+   cells appear in the sticky head, which has to hide the rows passing under it. */
+:root {
+  --band-bench: #f7f3ea;
+  --band-total: #efe9dc;
+}
+
+table.results td.lift-bench,
+table.results th.lift-bench { background: var(--band-bench); }
+
+table.results td.col-total,
+table.results th.col-total { background: var(--band-total); font-weight: 600; }
+
+.results-pane table.results thead th.lift-bench { background: var(--band-bench); }
+.results-pane table.results thead th.col-total { background: var(--band-total); }
