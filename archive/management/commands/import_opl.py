@@ -16,6 +16,8 @@ from django.utils.text import slugify
 from archive.models import (
     AgeGroup,
     Competition,
+    CompetitionFile,
+    FileKind,
     Equipment,
     Event,
     MeetLevel,
@@ -24,6 +26,7 @@ from archive.models import (
     unique_slug,
 )
 from archive.services.commit import athlete_for
+from archive.services.importers import _division_label
 from archive.services.names import transliterate
 from archive.services.records import recalculate_records
 from archive.services.weight_classes import weight_class_for
@@ -35,18 +38,6 @@ EQUIPMENT = {
     "Single-ply": Equipment.EQUIPPED,
     "Multi-ply": Equipment.EQUIPPED,
     "Unlimited": Equipment.EQUIPPED,
-}
-DIVISIONS = {
-    "open": AgeGroup.OPEN,
-    "o": AgeGroup.OPEN,
-    "juniors": AgeGroup.JUNIOR,
-    "junior": AgeGroup.JUNIOR,
-    "sub-juniors": AgeGroup.SUBJUNIOR,
-    "sub-junior": AgeGroup.SUBJUNIOR,
-    "masters 1": AgeGroup.M1,
-    "masters 2": AgeGroup.M2,
-    "masters 3": AgeGroup.M3,
-    "masters 4": AgeGroup.M4,
 }
 # Used when the division is something the meet invented ("Prime Time", "Guest").
 BIRTH_YEAR_CLASS = [
@@ -72,6 +63,11 @@ class Command(BaseCommand):
         parser.add_argument("--country", default="Bulgaria")
         parser.add_argument("--parent-federation", default="IPF", help="празно = всички федерации")
         parser.add_argument("--abroad", action="store_true", help="само турнири извън страната")
+        parser.add_argument(
+            "--into",
+            help="slug на съществуващо състезание; внася в него вместо да създава нови",
+        )
+        parser.add_argument("--source-url", default="", help="адрес на турнира в OpenPowerlifting")
         parser.add_argument("--dry-run", action="store_true")
 
     def handle(self, *args, **options):
@@ -81,6 +77,10 @@ class Command(BaseCommand):
         meets = {}
         for row in rows:
             meets.setdefault(self._meet_key(row), []).append(row)
+        if options["into"] and len(meets) != 1:
+            raise CommandError(
+                f"--into иска точно един турнир в подбора, а са {len(meets)}."
+            )
 
         skipped = []
         self.stdout.write(f"редове: {len(rows)}   турнири: {len(meets)}")
@@ -100,7 +100,7 @@ class Command(BaseCommand):
         created_meets = created_rows = created_athletes = 0
         with transaction.atomic():
             for key, group in sorted(meets.items()):
-                competition, was_new = self._competition(key)
+                competition, was_new = self._competition(key, options["into"])
                 created_meets += int(was_new)
                 competition.results.all().delete()
                 for row in group:
@@ -112,6 +112,7 @@ class Command(BaseCommand):
                     created_athletes += int(is_new)
                     self._result(competition, athlete, row)
                     created_rows += 1
+                self._source_link(competition, key, options["source_url"])
             recalculate_records()
 
         self.stdout.write(
@@ -138,7 +139,22 @@ class Command(BaseCommand):
     def _meet_key(self, row):
         return (row["Date"], row["Federation"], row["MeetCountry"], row["MeetName"], row["MeetTown"])
 
-    def _competition(self, key):
+    def _source_link(self, competition, key, url):
+        """Where these rows came from, in place of a protocol the meet has none of."""
+        if not url:
+            return
+        CompetitionFile.objects.filter(competition=competition, kind=FileKind.OPL).delete()
+        CompetitionFile.objects.create(
+            competition=competition,
+            kind=FileKind.OPL,
+            title=f"{key[1]} · {key[3]}",
+            url=url,
+            sort_order=9,
+        )
+
+    def _competition(self, key, into_slug=None):
+        if into_slug:
+            return Competition.objects.get(slug=into_slug), False
         day, federation, country, name, town = key
         slug = f"{day}-{slugify(transliterate(f'{federation}-{name}'), allow_unicode=False)}"[:320]
         existing = Competition.objects.filter(slug=slug).first()
@@ -171,13 +187,21 @@ class Command(BaseCommand):
         return ""
 
     def _age_group(self, row):
-        found = DIVISIONS.get(row["Division"].strip().lower())
+        # The same codes the protocol reader knows, including "F-Jr" and "M-Sj".
+        found = _division_label(row["Division"])
         if found:
             return found
         for label, group in BIRTH_YEAR_CLASS:
             if row["BirthYearClass"] == label:
                 return group
         return ""
+
+    def _country(self, row):
+        """A domestic meet can host a guest from abroad; keep their country."""
+        name = (row.get("Country") or "").strip()
+        if not name or name == "Bulgaria":
+            return "България"
+        return name
 
     def _result(self, competition, athlete, row):
         def number(column):
@@ -188,7 +212,7 @@ class Command(BaseCommand):
             competition=competition,
             athlete=athlete,
             raw_name=row["Name"],
-            country="България",
+            country=self._country(row),
             sex=row["Sex"],
             age_group=self._age_group(row),
             equipment=EQUIPMENT[row["Equipment"]],

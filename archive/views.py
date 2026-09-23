@@ -79,6 +79,7 @@ def competition_list(request):
 
 def competition_detail(request, slug):
     competition = get_object_or_404(visible_competitions(Competition.objects.all()), slug=slug)
+    files = list(competition.files.all())
     has_any_results = visible_results(competition.results.all()).exists()
     results = visible_results(competition.results.select_related("athlete"))
     sex = request.GET.get("sex", "")
@@ -101,7 +102,9 @@ def competition_detail(request, slug):
             "competition": competition,
             "results": results,
             "groups": _group_results(results),
-            "scans": [f for f in competition.files.all() if f.kind == FileKind.SCAN and f.file],
+            "scans": [f for f in files if f.kind == FileKind.SCAN and f.file],
+            "protocols": [f for f in files if f.kind != FileKind.OPL],
+            "sources": [f for f in files if f.kind == FileKind.OPL and f.url],
             **_visible_columns(results),
             "has_any_results": has_any_results,
             "filters": {

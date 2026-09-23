@@ -1251,3 +1251,22 @@ class DuplicatesPageTests(TestCase):
         page = self.client.get(f"/admin/archive/athlete/{self.two.pk}/change/")
         self.assertContains(page, "Стартове")
         self.assertContains(page, "European Classic Powerlifting Championships")
+
+
+class DivisionCodeShapeTests(TestCase):
+    def test_the_shapes_the_sources_use(self):
+        from archive.services.importers import _division_label
+
+        for code, expected in (
+            ("F-C-Open", AgeGroup.OPEN), ("M-C-Open", AgeGroup.OPEN),
+            ("MR-O", AgeGroup.OPEN), ("FR-Jr", AgeGroup.JUNIOR),
+            ("MR-Sj", AgeGroup.SUBJUNIOR), ("MR-M1", AgeGroup.M1),
+            ("Sub-Junior", AgeGroup.SUBJUNIOR), ("Masters 1", AgeGroup.M1),
+        ):
+            self.assertEqual(_division_label(code), expected, code)
+
+    def test_a_heading_is_not_mistaken_for_a_code(self):
+        from archive.services.importers import _division_label
+
+        for heading in ("Best Lifters of Subjuniors", "Nation (points)", "Best Lifters of Seniors"):
+            self.assertEqual(_division_label(heading), "", heading)

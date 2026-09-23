@@ -645,10 +645,19 @@ def _division_label(value):
     }
     if text in table:
         return table[text]
-    # Protocols exported from OpenPowerlifting glue the sex onto the division:
-    # "F-Jr", "M-O", "M-T3". The sex already has its own column.
+    # Protocols glue the sex, and sometimes the equipment, onto the division:
+    # "F-Jr", "MR-O", "F-C-Open". The division is the last part; the sex and the
+    # equipment have columns of their own. The whole string is tried first, so
+    # "Sub-Junior" is not mistaken for "Junior".
     if len(text) > 1 and text[0] in "fmw" and text[1:] in table:
         return table[text[1:]]
+    code = (value or "").strip()
+    # Only for something shaped like a code: a heading such as "Best Lifters of
+    # Subjuniors" must stay unrecognised so it still starts a block to skip.
+    if " " not in code and len(code) <= 12:
+        tail = re.sub(r"[^a-zа-я0-9]+", "", re.split(r"[-/]", code)[-1].lower())
+        if tail and tail != text and tail in table:
+            return table[tail]
     return ""
 
 

@@ -14,12 +14,18 @@
   </div>
   {% if competition.notes %}<p>{{ competition.notes }}</p>{% endif %}
 
-  {% if competition.files.all %}
+  {% if protocols or sources %}
     <p class="files-inline">
-      <span class="files-label">Протокол:</span>
-      {% for item in competition.files.all %}
-        {% if item.file %}<a href="{{ item.file.url }}">{{ item.title|default:item.get_kind_display }}</a>
-        {% elif item.url %}<a href="{{ item.url }}">{{ item.title|default:"линк" }}</a>{% endif %}
+      {% if protocols %}
+        <span class="files-label">Протокол:</span>
+        {% for item in protocols %}
+          {% if item.file %}<a href="{{ item.file.url }}">{{ item.title|default:item.get_kind_display }}</a>
+          {% elif item.url %}<a href="{{ item.url }}">{{ item.title|default:"линк" }}</a>{% endif %}
+        {% endfor %}
+      {% endif %}
+      {% for item in sources %}
+        <span class="files-label">Източник:</span>
+        <a href="{{ item.url }}" rel="noreferrer">OpenPowerlifting</a>
       {% endfor %}
     </p>
   {% endif %}

@@ -56,6 +56,7 @@ class FileKind(models.TextChoices):
     PDF = "pdf", "PDF"
     SCAN = "scan", "Снимка на протокол"
     LINK = "link", "Линк"
+    OPL = "opl", "OpenPowerlifting"
 
 
 class RecordOrigin(models.TextChoices):
