@@ -558,7 +558,7 @@ def _is_place(value):
 def _clean_place(value):
     text = (value or "").strip().upper()
     if text in {"NS", "DQ", "DD", "G", "DNS", "DSQ"}:
-        return "NS" if text == "DNS" else text
+        return {"DNS": "NS", "DSQ": "DQ"}.get(text, text)
     try:
         return str(int(float(text.replace(",", "."))))
     except ValueError:

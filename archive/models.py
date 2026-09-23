@@ -66,6 +66,11 @@ class RecordOrigin(models.TextChoices):
 
 BG_COUNTRIES = {"bg", "bul", "bulgaria", "българия", "бг"}
 
+# A start that carries no placing sets no record: a guest lifts outside the
+# competition, and a lifter disqualified for any reason — including bombing out
+# and so registering no total — cannot claim one.
+NON_SCORING_PLACES = {"DD", "DQ", "DSQ", "G", "NS", "DNS"}
+
 # The IPF replaced its weight classes on 1 January 2011. Results in the older
 # ones cannot be compared with today's and are hidden unless asked for. The sex
 # matters: 52 kg is a current women's class and an old men's one.
@@ -261,7 +266,7 @@ class Result(models.Model):
     def counts_for_bulgarian_records(self):
         if not self.counts_for_records or self.event not in RECORD_EVENTS:
             return False
-        if (self.place or "").strip().upper() == "DD":
+        if (self.place or "").strip().upper() in NON_SCORING_PLACES:
             return False
         country = (self.country or "").strip().lower()
         return country in BG_COUNTRIES

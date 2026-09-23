@@ -1034,3 +1034,52 @@ class WeightClassFromBodyweightTests(TestCase):
         call_command("fill_weight_classes", verbosity=0)
         result.refresh_from_db()
         self.assertEqual(result.weight_class, "105")
+
+
+class NonScoringPlaceTests(TestCase):
+    def _result(self, place, **fields):
+        athlete = Athlete.objects.create(name_bg=f"Лифтьор {place}", sex=Sex.M)
+        competition = Competition.objects.create(
+            name=f"Турнир {place}", start_date=date(2025, 3, 8), slug=f"t-{place.lower()}"
+        )
+        return Result.objects.create(
+            competition=competition, athlete=athlete, raw_name=athlete.name_bg, sex=Sex.M,
+            age_group=AgeGroup.OPEN, equipment=Equipment.CLASSIC, event=Event.SBD,
+            weight_class="105", country="България", place=place, **fields,
+        )
+
+    def test_a_guest_start_sets_no_record(self):
+        guest = self._result("G", best_squat=310, best_deadlift=Decimal("357.5"), total=900)
+        self.assertFalse(guest.counts_for_bulgarian_records)
+        recalculate_records()
+        self.assertEqual(Record.objects.count(), 0)
+
+    def test_a_disqualified_start_sets_no_record_even_with_good_lifts(self):
+        dq = self._result("DQ", best_squat=350, best_bench=225)
+        self.assertFalse(dq.counts_for_bulgarian_records)
+        recalculate_records()
+        self.assertEqual(Record.objects.count(), 0)
+
+    def test_doping_and_no_show_still_set_nothing(self):
+        for place in ("DD", "NS"):
+            self.assertFalse(self._result(place, best_squat=400).counts_for_bulgarian_records)
+
+    def test_a_placed_start_still_sets_records(self):
+        placed = self._result("3", best_squat=300, best_bench=200, best_deadlift=300, total=800)
+        self.assertTrue(placed.counts_for_bulgarian_records)
+        recalculate_records()
+        self.assertEqual(Record.objects.filter(lift=Lift.TOTAL, value_kg=800).count(), 1)
+
+    def test_a_guest_does_not_displace_a_placed_lifter(self):
+        self._result("3", best_squat=300, total=800)
+        self._result("G", best_squat=350, total=900)
+        recalculate_records()
+        squat = Record.objects.get(lift=Lift.SQUAT, valid_to=None)
+        self.assertEqual(squat.value_kg, 300)
+
+    def test_dsq_is_stored_as_dq(self):
+        from archive.services.importers import _clean_place
+
+        self.assertEqual(_clean_place("DSQ"), "DQ")
+        self.assertEqual(_clean_place("DNS"), "NS")
+        self.assertEqual(_clean_place("G"), "G")
