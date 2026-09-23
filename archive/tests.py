@@ -18,7 +18,9 @@ from archive.services.importers import _equipment_in_text, parse_upload
 from archive.services.merge import duplicate_candidates, merge_athletes
 from archive.services.visibility import visible_athletes, visible_competitions, visible_results
 from archive.services.weight_classes import weight_class_for
-from archive.services.names import athlete_name_key, reverse_transliterate, transliterate
+from archive.services.names import (
+    athlete_name_key, normalize_name, reverse_transliterate, transliterate,
+)
 from archive.services.records import recalculate_records
 
 
@@ -1153,3 +1155,56 @@ class DerivedRowFieldsTests(TestCase):
         parsed = parse_upload("odd.xlsx", _bytes(workbook))
         self.assertEqual(len(parsed.rows), 1)
         self.assertTrue(parsed.rows[0].errors)
+
+
+class NameCaseTests(TestCase):
+    def test_a_name_in_capitals_becomes_an_ordinary_name(self):
+        self.assertEqual(normalize_name("ЕЛЕНА ЯНЕВА"), "Елена Янева")
+        self.assertEqual(normalize_name("VALENTIN KOLEV 1"), "Valentin Kolev 1")
+        self.assertEqual(normalize_name("ТАБАКОВА-ТРЕНДАФИЛОВА"), "Табакова-Трендафилова")
+
+    def test_a_name_that_is_already_ordinary_is_left_alone(self):
+        for name in ("Иван Петров", "Robert Mihaylov", "Ivan Petrov #2"):
+            self.assertEqual(normalize_name(name), name)
+
+    def test_extra_spacing_is_tidied(self):
+        self.assertEqual(normalize_name("  Иван   Петров "), "Иван Петров")
+
+    def test_a_digraph_inside_capitals_stays_capital(self):
+        self.assertEqual(transliterate("ВЕНЦИСЛАВ"), "VENTSISLAV")
+        self.assertEqual(transliterate("ЖИВКО ЩЕРЕВ"), "ZHIVKO SHTEREV")
+        self.assertEqual(transliterate("Венцислав"), "Ventsislav")
+        self.assertEqual(transliterate("Щерев"), "Shterev")
+
+    def test_the_command_recases_and_rebuilds_the_latin_spelling(self):
+        athlete = Athlete.objects.create(name_bg="ВЕНЦИСЛАВ КОСТАДИНОВ", sex=Sex.M)
+        self.assertEqual(athlete.name_lat, "VENTSISLAV KOSTADINOV")
+        call_command("fix_name_case", verbosity=0)
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.name_bg, "Венцислав Костадинов")
+        self.assertEqual(athlete.name_lat, "Ventsislav Kostadinov")
+
+    def test_a_latin_name_from_its_own_source_is_only_recased(self):
+        athlete = Athlete.objects.create(name_bg="ИВАН ПЕТРОВ", name_lat="PETROV IVAN", sex=Sex.M)
+        call_command("fix_name_case", verbosity=0)
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.name_bg, "Иван Петров")
+        self.assertEqual(athlete.name_lat, "Petrov Ivan")
+
+    def test_an_imported_name_in_capitals_is_stored_ordinary(self):
+        from archive.services.commit import athlete_for
+
+        athlete, _ = athlete_for("ГАЛИНА ИВАНОВА", Sex.F)
+        self.assertEqual(athlete.name_bg, "Галина Иванова")
+
+
+class BrokenDigraphRepairTests(TestCase):
+    def test_a_latin_name_left_by_the_old_transliteration_is_rebuilt(self):
+        athlete = Athlete.objects.create(name_bg="Тест", sex=Sex.M)
+        Athlete.objects.filter(pk=athlete.pk).update(
+            name_bg="ВЕНЦИСЛАВ КОСТАДИНОВ", name_lat="VENTsISLAV KOSTADINOV"
+        )
+        call_command("fix_name_case", verbosity=0)
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.name_bg, "Венцислав Костадинов")
+        self.assertEqual(athlete.name_lat, "Ventsislav Kostadinov")

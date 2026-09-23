@@ -13,7 +13,7 @@ from archive.models import (
     MeetLevel,
     Result,
 )
-from archive.services.names import athlete_name_key, is_cyrillic, transliterate
+from archive.services.names import athlete_name_key, is_cyrillic, normalize_name, transliterate
 from archive.services.records import recalculate_records
 from archive.services.weight_classes import weight_class_for
 
@@ -171,6 +171,7 @@ def _athlete_for(item):
 
 
 def athlete_for(raw_name, sex):
+    raw_name = normalize_name(raw_name)
     key = athlete_name_key(raw_name if is_cyrillic(raw_name) else "", raw_name)
     existing = list(Athlete.objects.filter(sex=sex, name_key=key)[:1])
     if existing:

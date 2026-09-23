@@ -41,16 +41,32 @@ def is_cyrillic(text):
 
 def transliterate(text):
     pieces = []
-    for char in text:
+    for index, char in enumerate(text):
         lower = char.lower()
         mapped = _LETTERS.get(lower)
         if mapped is None:
             pieces.append(char)
             continue
         if char.isupper():
-            mapped = mapped.capitalize()
+            # "Ц" inside a word written in capitals is TS, not Ts.
+            mapped = mapped.upper() if _within_capitals(text, index) else mapped.capitalize()
         pieces.append(mapped)
     return "".join(pieces)
+
+
+def _within_capitals(text, index):
+    for offset in (index - 1, index + 1):
+        if 0 <= offset < len(text) and text[offset].isalpha():
+            return text[offset].isupper()
+    return False
+
+
+def normalize_name(text):
+    """A protocol written in capitals reads as shouting everywhere else."""
+    cleaned = " ".join((text or "").split())
+    if cleaned and cleaned == cleaned.upper() and any(char.isalpha() for char in cleaned):
+        return cleaned.title()
+    return cleaned
 
 
 def name_tokens(text):
