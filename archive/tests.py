@@ -651,6 +651,27 @@ class UploadPathTests(TestCase):
         )
 
 
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ProtocolDownloadTests(TestCase):
+    """A browser cannot show a spreadsheet, so a plain link to one seemed to
+    do nothing while the file landed silently in the downloads folder."""
+
+    def test_a_kept_copy_is_offered_as_a_download(self):
+        competition = Competition.objects.create(
+            name="\u0422\u0435\u0441\u0442", slug="download-test", start_date=date(2026, 9, 19)
+        )
+        CompetitionFile.objects.create(
+            competition=competition, kind=FileKind.EXCEL, title="\u043c\u044a\u0436\u0435",
+            url="https://example.org/p.xlsx",
+        )
+        stored = CompetitionFile.objects.create(
+            competition=competition, kind=FileKind.EXCEL, title="\u043a\u043e\u043f\u0438\u0435",
+            file=ContentFile(b"x", name="p.xlsx"),
+        )
+        page = self.client.get(f"/competitions/{competition.slug}/").content.decode()
+        self.assertIn(f'href="{stored.file.url}" download', page)
+
+
 class MediaServingTests(TestCase):
     """Uploaded protocols and photos are reachable with DEBUG off, which is how
     the site actually runs; nothing sits in front of gunicorn to serve them."""
