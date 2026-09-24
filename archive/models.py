@@ -166,10 +166,20 @@ class AthleteAlias(models.Model):
         return f"{self.name_key} -> {self.athlete}"
 
 
+def photo_path(instance, filename):
+    """Filed under the year the photo is from, not the year it was uploaded."""
+    return f"athletes/{instance.year}/{filename}"
+
+
+def protocol_path(instance, filename):
+    """Filed under the year of the meet, not the year it was uploaded."""
+    return f"protocols/{instance.competition.start_date.year}/{filename}"
+
+
 class AthletePhoto(models.Model):
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name="photos")
     year = models.PositiveSmallIntegerField("Година")
-    image = models.ImageField("Снимка", upload_to="athletes/%Y/")
+    image = models.ImageField("Снимка", upload_to=photo_path)
     caption = models.CharField("Надпис", max_length=200, blank=True)
 
     class Meta:
@@ -218,7 +228,7 @@ class CompetitionFile(models.Model):
     competition = models.ForeignKey(Competition, on_delete=models.CASCADE, related_name="files")
     kind = models.CharField("Вид", max_length=10, choices=FileKind.choices)
     title = models.CharField("Заглавие", max_length=300, blank=True)
-    file = models.FileField("Файл", upload_to="protocols/%Y/", blank=True)
+    file = models.FileField("Файл", upload_to=protocol_path, blank=True)
     url = models.URLField("Линк", blank=True)
     sort_order = models.PositiveSmallIntegerField("Ред", default=0)
 

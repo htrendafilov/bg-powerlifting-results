@@ -15,6 +15,8 @@ from archive.models import (
     AgeGroup, Athlete, AthletePhoto, Competition, Equipment, Event, Lift, MeetLevel,
     CompetitionFile, FileKind, Record, RecordOrigin, Result, Sex, SiteSettings,
 )
+from archive.models import photo_path
+from django.core.files.base import ContentFile
 from archive.services.commit import apply_import, athlete_for, prepare_rows
 from archive.services.importers import _equipment_in_text, parse_upload
 from archive.services.merge import duplicate_candidates, merge_athletes
@@ -625,6 +627,28 @@ class MergeSurvivesReimportTests(TestCase):
         found, created = athlete_for("\u0412 \u0412", Sex.F)
         self.assertFalse(created)
         self.assertEqual(found.pk, first.pk)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class UploadPathTests(TestCase):
+    """A protocol belongs to the year of its meet, not the year it was loaded."""
+
+    def test_a_protocol_is_filed_under_the_meets_year(self):
+        competition = Competition.objects.create(
+            name="\u0422\u0435\u0441\u0442", slug="path-test", start_date=date(2022, 7, 2)
+        )
+        stored = CompetitionFile.objects.create(
+            competition=competition, kind=FileKind.EXCEL, title="\u043f",
+            file=ContentFile(b"x", name="p.xlsx"),
+        )
+        self.assertTrue(stored.file.name.startswith("protocols/2022/"), stored.file.name)
+
+    def test_a_photo_is_filed_under_the_year_it_shows(self):
+        athlete = Athlete.objects.create(name_bg="\u0410 \u0411", sex=Sex.M)
+        self.assertEqual(
+            photo_path(AthletePhoto(athlete=athlete, year=2014), "face.jpg"),
+            "athletes/2014/face.jpg",
+        )
 
 
 class MediaServingTests(TestCase):
