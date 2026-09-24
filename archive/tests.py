@@ -836,6 +836,34 @@ class ReverseTransliterationTests(TestCase):
         self.assertEqual(reverse_transliterate("Cvetanov"), "\u0426\u0432\u0435\u0442\u0430\u043d\u043e\u0432")
 
 
+class ClassRankTests(TestCase):
+    """Дупница 2022 heads the start number "№" and ranks every lift, the total
+    and the points in columns all headed "клас."."""
+
+    def _rows(self, *bodies):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["№", "име", "тегло", "клек", "клас.", "лег", "клас.",
+                      "тяга", "клас.", "тотал", "клас.", "точки", "клас."])
+        for body in bodies:
+            sheet.append(body)
+        buffer = BytesIO()
+        workbook.save(buffer)
+        return parse_upload("bg.xlsx", buffer.getvalue()).rows
+
+    def test_the_place_is_the_rank_after_the_total(self):
+        row, = self._rows(["4", "Мария Кирилова", "53.9", "125", "2", "70", "1",
+                           "145", "2", "340", "2", "404.33", "3"])
+        self.assertEqual(row.place, "2")
+
+    def test_a_bomb_out_is_disqualified_and_a_no_show_is_dropped(self):
+        rows = self._rows(
+            ["1", "Пешо Иванов", "107.1", "250", "3", "0", "", "0", "", "", "", "", ""],
+            ["2", "Иван Петров", "", "0", "", "0", "", "0", "", "0", "", "", ""],
+        )
+        self.assertEqual([(r.raw_name, r.place) for r in rows], [("Пешо Иванов", "DQ")])
+
+
 class BulgarianDivisionTests(TestCase):
     """The federation spells the division out and, when it says only
     "Ветерани", appends the band to the name (real file: Дупница 2022)."""

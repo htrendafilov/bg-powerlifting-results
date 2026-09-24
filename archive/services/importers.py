@@ -54,6 +54,7 @@ _HEADER_ALIASES = {
     "място": "place",
     "класиране": "place",
     "no": "place",
+    "клас": "rank",
     "име": "name",
     "имеифамилия": "name",
     "фамилия": "surname",
@@ -179,6 +180,7 @@ class HeaderLayout:
     results: list = field(default_factory=list)
     divisions: list = field(default_factory=list)
     places: list = field(default_factory=list)
+    total_rank: int | None = None
 
 
 def parse_upload(filename, payload):
@@ -324,6 +326,18 @@ def _parse_table(title, rows):
             if not _is_place(label):
                 ignoring = label if not rows_carry_division else False
             continue
+        rank = layout.total_rank
+        if (
+            rank is not None
+            and not _cell(row, rank)
+            and layout.places
+            and _is_place(_cell(row, layout.places[0]))
+            and _mapped(row, mapping, "bodyweight")
+        ):
+            # A lifter who weighed in and bombed out has no placing, only a
+            # start number; one who never weighed in did not show up.
+            row = [*row, *[""] * (rank + 1 - len(row))]
+            row[rank] = "DQ"
         if not _is_place(_mapped(row, mapping, "place")):
             continue
         if ignoring:
@@ -436,6 +450,9 @@ def _choose_place_column(layout, body):
     The placing starts again at 1 in every class, so it repeats; the running
     number is unique down the whole sheet. That is what tells them apart.
     """
+    if layout.total_rank is not None:
+        layout.mapping[layout.total_rank] = "place"
+        return
     if not layout.places:
         return
     chosen = layout.places[0]
@@ -466,6 +483,12 @@ def _header_layout(normalized):
             continue
         if field_name == "place":
             layout.places.append(index)
+            continue
+        if field_name == "rank":
+            # "клас." follows every lift, the total and the points; only the
+            # one after the total is the placing in the class.
+            if index and _HEADER_ALIASES.get(normalized[index - 1]) == "total":
+                layout.total_rank = index
             continue
         if field_name not in layout.mapping.values():
             layout.mapping[index] = field_name
