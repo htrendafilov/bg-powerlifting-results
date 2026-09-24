@@ -604,6 +604,27 @@ class ReimportAttachmentTests(TestCase):
         self.assertEqual(competition.files.filter(kind=FileKind.EXCEL).count(), 1)
         self.assertEqual(competition.results.count(), 1)
 
+    def test_a_copy_with_its_own_title_is_recognised_by_its_file(self):
+        competition = Competition.objects.create(
+            name="\u0422\u0435\u0441\u0442", slug="attach-title", start_date=date(2022, 7, 2)
+        )
+        CompetitionFile.objects.create(
+            competition=competition, kind=FileKind.EXCEL, title="\u0442\u0430\u0431\u043b\u0438\u0446\u0430",
+            file=ContentFile(b"x", name="my protocol.xlsx"),
+        )
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["PL.", "   Name", "Nation", "Weight", "1 Att.", "2 Att.", "3 Att."])
+        sheet.append(["1", "Ivan Petrov", "NSA", "82.6", "100", "110", "120"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        apply_import(
+            competition, parse_upload("my protocol.xlsx", buffer.getvalue()), default_sex="M",
+            default_equipment="classic", default_event="B", default_age_group="open", replace=True,
+            stored_file=BytesIO(buffer.getvalue()), filename="my protocol.xlsx",
+        )
+        self.assertEqual(competition.files.filter(kind=FileKind.EXCEL).count(), 1)
+
 
 class MergeSurvivesReimportTests(TestCase):
     """Re-importing the protocol that used the absorbed spelling used to bring

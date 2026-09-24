@@ -1,6 +1,8 @@
+import os
 from decimal import Decimal
 
 from django.core.files.base import File
+from django.core.files.storage import default_storage
 from django.db import transaction
 
 from archive.models import (
@@ -85,9 +87,7 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
             created += 1
         # Re-importing the same protocol must not attach a second copy of it,
         # while a meet published as several files keeps all of them.
-        if stored_file is not None and filename and not competition.files.filter(
-            kind=FileKind.EXCEL, title=filename
-        ).exists():
+        if stored_file is not None and filename and not _already_attached(competition, filename):
             CompetitionFile.objects.create(
                 competition=competition,
                 kind=FileKind.EXCEL,
@@ -96,6 +96,15 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
             )
         recalculate_records()
     return {"created": created, "athletes": created_athletes, "blocked": []}
+
+
+def _already_attached(competition, filename):
+    # A copy given its own title is recognised by the name it was stored under.
+    stored = default_storage.get_valid_name(filename)
+    return any(
+        item.title == filename or os.path.basename(item.file.name) == stored
+        for item in competition.files.filter(kind=FileKind.EXCEL)
+    )
 
 
 # IPF age divisions, used when a protocol gives the age in years but no group.
