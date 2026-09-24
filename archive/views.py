@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from decimal import Decimal
 
 from django.contrib import messages
@@ -265,8 +266,12 @@ def import_confirm(request):
 
 
 def _options_from_form(cleaned, path, filename, parsed):
-    start = cleaned.get("start_date") or parsed.meet_date
     competition = cleaned.get("competition")
+    # The preview must judge the rows by the same date the import will use.
+    if competition:
+        start = competition.start_date
+    else:
+        start = cleaned.get("start_date") or parsed.meet_date
     return {
         "path": path,
         "filename": filename,
@@ -288,14 +293,13 @@ def _prepare_kwargs(options):
         "default_equipment": options["default_equipment"],
         "default_event": options["default_event"],
         "meet_level": options["level"],
+        "meet_date": date.fromisoformat(options["start_date"]) if options["start_date"] else None,
     }
 
 
 def _competition_from_options(options, parsed):
     if options["competition_id"]:
         return Competition.objects.get(pk=options["competition_id"])
-    from datetime import date
-
     start = date.fromisoformat(options["start_date"] or parsed.meet_date.isoformat())
     return Competition.objects.create(
         name=options["name"],

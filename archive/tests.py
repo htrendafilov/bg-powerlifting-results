@@ -17,6 +17,7 @@ from archive.models import (
 )
 from archive.models import photo_path
 from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import SimpleUploadedFile
 from archive.services.commit import apply_import, athlete_for, prepare_rows
 from archive.services.importers import _division_label, _equipment_in_text, parse_upload
 from archive.services.merge import duplicate_candidates, merge_athletes
@@ -1670,6 +1671,42 @@ class BrokenDigraphRepairTests(TestCase):
         athlete.refresh_from_db()
         self.assertEqual(athlete.name_bg, "Венцислав Костадинов")
         self.assertEqual(athlete.name_lat, "Ventsislav Kostadinov")
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class WebImportDateTests(TestCase):
+    """Кърджали 2025 names neither sex; the class does, but only with the
+    meet's date, which the web import used to leave out of the preview."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+
+        self.client.force_login(User.objects.create_superuser("adm", "a@b.bg", "pw-for-tests-only"))
+        self.meet = Competition.objects.create(
+            name="3 кръг", slug="web-date", start_date=date(2025, 9, 19)
+        )
+
+    def _upload(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["Място", "Име", "Дивизия", "Лично тегло", "Категория", "Лег 1", "Най-добър лег"])
+        sheet.append(["1", "Мария Иванова", "Open", "61.9", "63", "70", "70"])
+        sheet.append(["1", "Иван Петров", "Open", "82.6", "83", "150", "150"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        return SimpleUploadedFile("kard.xlsx", buffer.getvalue())
+
+    def test_the_preview_and_the_import_read_the_sex_off_the_class(self):
+        page = self.client.post("/import/", {
+            "competition": self.meet.pk, "upload": self._upload(), "level": "national",
+            "default_equipment": "classic", "default_event": "B",
+        })
+        self.assertEqual(page.context["blocked"], [])
+        self.client.post("/import/confirm/")
+        self.assertEqual(
+            sorted(self.meet.results.values_list("raw_name", "sex")),
+            [("Иван Петров", "M"), ("Мария Иванова", "F")],
+        )
 
 
 class DuplicatesPageTests(TestCase):
