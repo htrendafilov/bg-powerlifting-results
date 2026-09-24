@@ -960,7 +960,13 @@ def _event_code(value):
 
 
 def _date_in_text(value):
-    match = re.search(r"(\d{1,2})[.](\d{1,2})[.](\d{4})", value or "")
+    # A meet over several days is written "19-21.09.2025" or "30.05-01.06.2025";
+    # the date that belongs to it is the first day, not the last.
+    match = (
+        re.search(r"(?<!\d)(\d{1,2})[.](\d{1,2})\s*[-–]\s*\d{1,2}[.]\d{1,2}[.](\d{4})", value or "")
+        or re.search(r"(?<!\d)(\d{1,2})\s*[-–]\s*\d{1,2}[.](\d{1,2})[.](\d{4})", value or "")
+        or re.search(r"(\d{1,2})[.](\d{1,2})[.](\d{4})", value or "")
+    )
     if match:
         day, month, year = (int(part) for part in match.groups())
         try:

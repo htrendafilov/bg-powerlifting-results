@@ -195,8 +195,7 @@ CATALOG = [
     {
         "slug": "2024-dupnitsa-leg",
         "name": "Вдигане от лег с и без екип",
-        "start": date(2024, 9, 21),
-        "end": date(2024, 9, 22),
+        "start": date(2024, 9, 22),
         "city": "Дупница",
         "links": [
             (

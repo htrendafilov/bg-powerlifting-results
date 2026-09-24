@@ -19,7 +19,7 @@ from archive.models import photo_path
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from archive.services.commit import apply_import, athlete_for, prepare_rows
-from archive.services.importers import _division_label, _equipment_in_text, parse_upload
+from archive.services.importers import _date_in_text, _division_label, _equipment_in_text, parse_upload
 from archive.services.merge import duplicate_candidates, merge_athletes
 from archive.services.visibility import visible_athletes, visible_competitions, visible_results
 from archive.services.weight_classes import class_fits, sex_for_class, weight_class_for
@@ -710,6 +710,15 @@ class MediaServingTests(TestCase):
             self.assertTrue(any("media" in route for route in routes), routes)
         reload(config.urls)
         clear_url_caches()
+
+
+class DateRangeTests(TestCase):
+    """A meet over several days is dated by its first day."""
+
+    def test_a_range_gives_its_first_day(self):
+        self.assertEqual(_date_in_text("19-21.09.2025"), date(2025, 9, 19))
+        self.assertEqual(_date_in_text("30.05-01.06.2025"), date(2025, 5, 30))
+        self.assertEqual(_date_in_text("22.09.2024"), date(2024, 9, 22))
 
 
 class SexFromClassTests(TestCase):
