@@ -573,6 +573,23 @@ class SectionHeadingTests(TestCase):
         self.assertEqual(parsed.skipped, 57)
 
 
+class HeaderWithoutNameTests(TestCase):
+    """A header that ranks and measures but never names the lifter used to
+    crash: the place column lives in layout.places, never in layout.mapping."""
+
+    def test_a_nameless_header_is_refused_instead_of_raising(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["\u2116", "\u0442\u0435\u0433\u043b\u043e", "\u043e\u0442\u0431\u043e\u0440",
+                      "\u043f\u043e\u043b", "\u0442\u043e\u0447\u043a\u0438"])
+        sheet.append(["1", "74.5", "\u041d\u0421\u0410", "M", "88.1"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        parsed = parse_upload("nameless.xlsx", buffer.getvalue())
+        self.assertEqual(parsed.rows, [])
+        self.assertTrue(parsed.errors)
+
+
 class BulgarianProtocolTests(TestCase):
     """The shape the federation publishes most often: a Bulgarian header row."""
 

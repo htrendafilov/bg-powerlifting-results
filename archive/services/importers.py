@@ -379,7 +379,9 @@ def _find_header(rows):
         # column next to the rank, but only in a row that is clearly a header.
         if len(layout.mapping) < 4:
             continue
-        place_index = next(i for i, name in layout.mapping.items() if name == "place")
+        # The place column sits in layout.places until _choose_place_column moves
+        # it into mapping, which happens after this function returns.
+        place_index = layout.places[0]
         candidate = place_index + 1
         if candidate < len(normalized) and not normalized[candidate] and candidate not in layout.mapping:
             layout.mapping[candidate] = "name"
