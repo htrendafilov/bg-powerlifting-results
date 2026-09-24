@@ -86,6 +86,7 @@ def athlete_name_key(name_bg, name_lat):
 _FOLD = [
     ("shtch", "sht"), ("tch", "ch"), ("kh", "h"), ("tz", "ts"), ("cz", "ts"),
     ("ph", "f"), ("ck", "k"), ("qu", "kv"), ("x", "ks"), ("w", "v"), ("tc", "ch"),
+    ("cv", "tsv"),
 ]
 
 # Endings the Russian and older Latin spellings use for Bulgarian names.
@@ -97,6 +98,9 @@ _ENDINGS = [
     # Bulgarian "й" only ever follows a vowel, so a trailing y after a
     # consonant is someone writing "и": Georgy -> Георги.
     (r"([bcdfghjklmnpqrstvwxz])y$", r"\1i"),
+    # "й" never carries a syllable, so a y wedged between two consonants is
+    # someone writing "ъ": Krystev -> krastev -> Кръстев, Dimityr -> Димитър.
+    (r"(?<=[bcdfghjklmnpqrstvwxz])y(?=[bcdfghjklmnpqrstvwxz])", "a"),
 ]
 _PAIRS = [
     ("sht", "щ"), ("zh", "ж"), ("ch", "ч"), ("sh", "ш"), ("ts", "ц"),
@@ -125,6 +129,7 @@ _WORDS = {
     "garlov": "Гърлов", "garlova": "Гърлова", "varbanov": "Върбанов",
     "varbanova": "Върбанова", "valchanov": "Вълчанов", "valchanova": "Вълчанова",
     "valkanov": "Вълканов", "valkanova": "Вълканова", "silvestar": "Силвестър",
+    "galabov": "Гълъбов", "galabova": "Гълъбова",
     "sadak": "Садък", "belkaz": "Белкъз", "vaklinov": "Ваклинов", "garkov": "Гърков", "tarnev": "Търнев",
 }
 
@@ -151,6 +156,11 @@ def _word(word):
     if known:
         return known
     lowered = fold_latin(cleaned)
+    # The spelling may only reach a listed word after folding: Dimityr and
+    # Dimitar are the same name, and only the second one is listed.
+    known = _WORDS.get(lowered)
+    if known:
+        return known
     out = []
     index = 0
     while index < len(lowered):

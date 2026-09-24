@@ -574,6 +574,21 @@ class SectionHeadingTests(TestCase):
         self.assertEqual(parsed.skipped, 57)
 
 
+class ReverseTransliterationTests(TestCase):
+    """Non-standard spellings write "ъ" as y and "ц" as c."""
+
+    def test_a_y_between_consonants_is_the_vowel_not_the_glide(self):
+        self.assertEqual(reverse_transliterate("Krystev"), "\u041a\u0440\u044a\u0441\u0442\u0435\u0432")
+        self.assertEqual(reverse_transliterate("Dimityr"), "\u0414\u0438\u043c\u0438\u0442\u044a\u0440")
+
+    def test_the_glide_survives_next_to_a_vowel(self):
+        self.assertEqual(reverse_transliterate("Stoyanov"), "\u0421\u0442\u043e\u044f\u043d\u043e\u0432")
+        self.assertEqual(reverse_transliterate("Nikolay"), "\u041d\u0438\u043a\u043e\u043b\u0430\u0439")
+
+    def test_cv_is_read_as_tsv(self):
+        self.assertEqual(reverse_transliterate("Cvetanov"), "\u0426\u0432\u0435\u0442\u0430\u043d\u043e\u0432")
+
+
 class BulgarianDivisionTests(TestCase):
     """The federation spells the division out and, when it says only
     "Ветерани", appends the band to the name (real file: Дупница 2022)."""
