@@ -15,6 +15,9 @@ from archive.services.names import name_tokens
 from archive.services.records import recalculate_records
 
 
+_MERGE_NOTE = "Слети: "
+
+
 @transaction.atomic
 def merge_athletes(target, others, *, recalculate=True):
     """Move every start, record and photo onto target, then delete the rest."""
@@ -28,8 +31,17 @@ def merge_athletes(target, others, *, recalculate=True):
         _fill_gaps(target, other)
         absorbed.append(other.display_name or other.name_lat or str(other.pk))
         other.delete()
-    if absorbed:
-        note = "Слети: " + ", ".join(absorbed)
+    # The same spelling can come back from a later import, so a name already
+    # recorded must not be appended a second time.
+    already = {
+        name.strip()
+        for line in (target.notes or "").splitlines()
+        if line.startswith(_MERGE_NOTE)
+        for name in line[len(_MERGE_NOTE):].split(", ")
+    }
+    fresh = [name for name in absorbed if name not in already]
+    if fresh:
+        note = _MERGE_NOTE + ", ".join(fresh)
         target.notes = f"{target.notes}\n{note}".strip() if target.notes else note
     target.save()
     if absorbed and recalculate:

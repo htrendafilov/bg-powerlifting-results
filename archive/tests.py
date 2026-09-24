@@ -574,6 +574,18 @@ class SectionHeadingTests(TestCase):
         self.assertEqual(parsed.skipped, 57)
 
 
+class MergeNoteTests(TestCase):
+    """The same spelling comes back whenever a protocol is imported again."""
+
+    def test_a_name_is_not_recorded_twice(self):
+        target = Athlete.objects.create(name_bg="\u041c\u0430\u0440\u0438\u044f \u0422.-\u0422.", sex=Sex.F)
+        for _ in range(3):
+            other = Athlete.objects.create(name_bg="\u041c\u0430\u0440\u0438\u044f \u0422\u0430\u0431\u0430\u043a\u043e\u0432\u0430", sex=Sex.F)
+            merge_athletes(target, [other], recalculate=False)
+        target.refresh_from_db()
+        self.assertEqual(target.notes.count("\u0421\u043b\u0435\u0442\u0438:"), 1)
+
+
 class ReverseTransliterationTests(TestCase):
     """Non-standard spellings write "ъ" as y and "ц" as c."""
 
