@@ -12,11 +12,12 @@ from archive.models import (
     Event,
     FileKind,
     MeetLevel,
+    NON_SCORING_PLACES,
     Result,
 )
 from archive.services.names import athlete_name_key, is_cyrillic, normalize_name, transliterate
 from archive.services.records import recalculate_records
-from archive.services.weight_classes import weight_class_for
+from archive.services.weight_classes import class_fits, weight_class_for
 
 ATTEMPT_FIELDS = [
     "squat1",
@@ -34,13 +35,14 @@ ATTEMPT_FIELDS = [
 ]
 
 
-def apply_import(competition, parsed, *, default_sex, default_equipment, default_event, default_age_group="", replace, stored_file=None, filename=""):
+def apply_import(competition, parsed, *, default_sex, default_equipment, default_event, default_age_group="", reclass=False, replace, stored_file=None, filename=""):
     ready, blocked = prepare_rows(
         parsed,
         default_sex=default_sex,
         default_equipment=default_equipment,
         default_event=default_event,
         default_age_group=default_age_group,
+        reclass=reclass,
         meet_level=competition.level,
         meet_date=competition.start_date,
     )
@@ -119,7 +121,8 @@ def _country_for(value, home_country):
 
 
 def prepare_rows(parsed, *, default_sex, default_equipment, default_event,
-                 default_age_group="", meet_level=MeetLevel.NATIONAL, meet_date=None):
+                 default_age_group="", reclass=False, meet_level=MeetLevel.NATIONAL,
+                 meet_date=None):
     ready = []
     blocked = []
     for index, item in enumerate(parsed.rows, start=1):
@@ -135,7 +138,18 @@ def prepare_rows(parsed, *, default_sex, default_equipment, default_event,
         if not item.age_group and item.age:
             item.age_group = _age_group_for(item.age)
         item.age_group = item.age_group or default_age_group
-        if not item.weight_class and item.bodyweight and meet_date:
+        # A lifter who does not score was never in a class; reading one off the
+        # scale would file her where she did not compete.
+        scoring = (item.place or "").strip().upper() not in NON_SCORING_PLACES
+        if reclass and item.bodyweight and scoring:
+            item.weight_class = ""
+        # A class the year did not contest, or one lighter than the weigh-in,
+        # cannot be what the lifter competed in; the bodyweight decides instead.
+        if item.weight_class and meet_date and scoring and not class_fits(
+            item.sex, item.weight_class, item.bodyweight, meet_date
+        ):
+            item.weight_class = ""
+        if not item.weight_class and item.bodyweight and meet_date and scoring:
             item.weight_class = weight_class_for(
                 item.sex, item.bodyweight, meet_date, item.age_group
             )

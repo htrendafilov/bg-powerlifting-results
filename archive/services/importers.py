@@ -286,6 +286,10 @@ def _parse_table(title, rows):
     # all. A sheet carrying its own Division column does not: there the headings
     # are decoration and an unknown one must not take the rows with it.
     rows_carry_division = bool(layout.divisions)
+    # Same for the class: where every row states its own, an empty cell means
+    # the lifter had no class — she missed the limit and lifted out of the
+    # standings — not that the last heading still applies.
+    rows_carry_class = "weight_class" in mapping.values()
     sheet_event = _event_from_columns(mapping) if kind == "opl" else ""
     title_equipment = _equipment_in_text(blob)
     # Workbooks are often split into a sheet per sex or per equipment ("жени",
@@ -335,7 +339,8 @@ def _parse_table(title, rows):
         item.age_group = item.age_group or division
         item.event = item.event or sheet_event
         item.sex = item.sex or sex or sheet_sex
-        item.weight_class = item.weight_class or weight_class
+        if not rows_carry_class:
+            item.weight_class = item.weight_class or weight_class
         if not item.equipment and sheet_equipment:
             item.equipment = sheet_equipment
             item.equipment_source = "sheet"

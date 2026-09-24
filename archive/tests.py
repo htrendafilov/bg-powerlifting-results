@@ -19,7 +19,7 @@ from archive.services.commit import apply_import, athlete_for, prepare_rows
 from archive.services.importers import _equipment_in_text, parse_upload
 from archive.services.merge import duplicate_candidates, merge_athletes
 from archive.services.visibility import visible_athletes, visible_competitions, visible_results
-from archive.services.weight_classes import weight_class_for
+from archive.services.weight_classes import class_fits, weight_class_for
 from archive.services.names import (
     athlete_name_key, normalize_name, reverse_transliterate, transliterate,
 )
@@ -625,6 +625,92 @@ class MergeSurvivesReimportTests(TestCase):
         found, created = athlete_for("\u0412 \u0412", Sex.F)
         self.assertFalse(created)
         self.assertEqual(found.pk, first.pk)
+
+
+class WeightClassEraTests(TestCase):
+    """The women's 72 kg ran until the end of 2020, so the same class is right
+    in 2018 and wrong in 2023."""
+
+    def test_the_womens_classes_split_in_2021(self):
+        self.assertEqual(weight_class_for(Sex.F, Decimal("68.2"), date(2018, 3, 1), AgeGroup.OPEN), "72")
+        self.assertEqual(weight_class_for(Sex.F, Decimal("68.2"), date(2023, 5, 27), AgeGroup.OPEN), "69")
+        self.assertEqual(weight_class_for(Sex.F, Decimal("71.5"), date(2023, 5, 27), AgeGroup.OPEN), "76")
+
+    def test_the_mens_classes_did_not_move(self):
+        for day in (date(2012, 1, 1), date(2023, 5, 27)):
+            self.assertEqual(weight_class_for(Sex.M, Decimal("100"), day, AgeGroup.OPEN), "105")
+
+    def test_a_class_the_year_did_not_contest_does_not_fit(self):
+        self.assertTrue(class_fits(Sex.F, "72", Decimal("68.2"), date(2018, 3, 1)))
+        self.assertFalse(class_fits(Sex.F, "72", Decimal("68.2"), date(2023, 5, 27)))
+        self.assertFalse(class_fits(Sex.F, "70", Decimal("72.7"), date(2025, 5, 31)))
+
+    def test_a_lifter_is_never_lighter_than_the_scale_said(self):
+        self.assertFalse(class_fits(Sex.M, "105", Decimal("118.3"), date(2026, 5, 30)))
+        self.assertTrue(class_fits(Sex.M, "120+", Decimal("150"), date(2026, 5, 30)))
+
+
+class EraVisibilityTests(TestCase):
+    """The setting hides the pre-2011 classes, not every class the IPF has
+    since replaced: a 2018 result in the women's 72 kg was current then."""
+
+    def _result(self, day, weight_class):
+        competition = Competition.objects.create(
+            name=f"\u0422\u0435\u0441\u0442 {day}", slug=f"era-{day}", start_date=day
+        )
+        athlete = Athlete.objects.create(name_bg=f"\u0410 {day}", sex=Sex.F)
+        return Result.objects.create(
+            competition=competition, athlete=athlete, sex=Sex.F, age_group=AgeGroup.OPEN,
+            equipment=Equipment.CLASSIC, event=Event.B, weight_class=weight_class,
+        )
+
+    def test_a_class_current_in_its_own_year_stays(self):
+        kept = self._result(date(2018, 3, 1), "72")
+        self.assertIn(kept, visible_results(Result.objects.all()))
+
+    def test_the_same_class_later_is_hidden_as_a_mistake(self):
+        wrong = self._result(date(2023, 5, 27), "72")
+        self.assertNotIn(wrong, visible_results(Result.objects.all()))
+
+    def test_a_pre_2011_class_is_hidden(self):
+        old = self._result(date(2008, 3, 1), "67.5")
+        self.assertNotIn(old, visible_results(Result.objects.all()))
+
+
+class StatedClassTests(TestCase):
+    """What the protocol writes in the class column is not always possible."""
+
+    def _rows(self, weight_class, bodyweight, place="1", **kwargs):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["\u2116", "\u0438\u043c\u0435", "\u043f\u043e\u043b",
+                      "\u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u044f",
+                      "\u0442\u0435\u0433\u043b\u043e", "\u043b\u0435\u04331",
+                      "\u043b\u0435\u04332", "\u043b\u0435\u04333"])
+        sheet.append([place, "\u0410\u043d\u043d\u0430 \u0414.", "F", weight_class,
+                      bodyweight, "70", "75", "80"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        parsed = parse_upload("c.xlsx", buffer.getvalue())
+        ready, _ = prepare_rows(
+            parsed, default_sex=Sex.F, default_equipment="classic", default_event="B",
+            default_age_group="open", meet_date=date(2025, 5, 31), **kwargs
+        )
+        return ready
+
+    def test_an_impossible_class_gives_way_to_the_weigh_in(self):
+        self.assertEqual(self._rows("70", "72.7")[0].weight_class, "76")
+
+    def test_a_class_that_fits_is_left_alone(self):
+        self.assertEqual(self._rows("84", "80.1")[0].weight_class, "84")
+
+    def test_a_lifter_out_of_the_standings_is_given_no_class(self):
+        rows = self._rows("", "70.0", place="DQ")
+        self.assertEqual(rows[0].weight_class, "")
+
+    def test_reclass_reads_every_class_off_the_scale(self):
+        self.assertEqual(self._rows("84", "80.1", reclass=True)[0].weight_class, "84")
+        self.assertEqual(self._rows("72", "68.2", reclass=True)[0].weight_class, "69")
 
 
 class FailedAttemptTests(TestCase):

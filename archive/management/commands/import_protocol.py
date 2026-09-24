@@ -27,6 +27,9 @@ class Command(BaseCommand):
                             choices=["", "subjunior", "junior", "open", "m1", "m2", "m3", "m4"],
                             help="за протокол без възрастови секции")
         parser.add_argument("--keep", action="store_true", help="добавя, вместо да замени")
+        parser.add_argument("--reclass", action="store_true",
+                            help="изчислява категориите по теглото — за протокол, "
+                                 "писан по остарял набор категории")
         parser.add_argument("--attach", action="store_true",
                             help="закача файла към турнира като източник")
         parser.add_argument("--skip-blocked", action="store_true", help="внася въпреки спрените редове")
@@ -49,6 +52,7 @@ class Command(BaseCommand):
             "default_equipment": options["equipment"],
             "default_event": options["event"],
             "default_age_group": options["age_group"],
+            "reclass": options["reclass"],
         }
         ready, blocked = prepare_rows(
             parsed, meet_level=competition.level, meet_date=competition.start_date, **defaults
