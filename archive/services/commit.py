@@ -80,7 +80,11 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
                 setattr(result, field_name, item.attempts.get(field_name))
             result.save()
             created += 1
-        if stored_file is not None and filename:
+        # Re-importing the same protocol must not attach a second copy of it,
+        # while a meet published as several files keeps all of them.
+        if stored_file is not None and filename and not competition.files.filter(
+            kind=FileKind.EXCEL, title=filename
+        ).exists():
             CompetitionFile.objects.create(
                 competition=competition,
                 kind=FileKind.EXCEL,
