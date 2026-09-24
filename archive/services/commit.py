@@ -35,7 +35,7 @@ ATTEMPT_FIELDS = [
 ]
 
 
-def apply_import(competition, parsed, *, default_sex, default_equipment, default_event, default_age_group="", reclass=False, replace, stored_file=None, filename=""):
+def apply_import(competition, parsed, *, default_sex, default_equipment, default_event, default_age_group="", reclass=False, replace, stored_file=None, filename="", title=""):
     ready, blocked = prepare_rows(
         parsed,
         default_sex=default_sex,
@@ -91,7 +91,7 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
             CompetitionFile.objects.create(
                 competition=competition,
                 kind=FileKind.EXCEL,
-                title=filename,
+                title=title or filename,
                 file=File(stored_file, name=filename),
             )
         recalculate_records()

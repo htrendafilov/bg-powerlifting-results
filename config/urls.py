@@ -2,9 +2,10 @@ from django.conf import settings
 from django.conf.urls.i18n import i18n_patterns
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 from django.views.generic import RedirectView
 from django.views.i18n import JavaScriptCatalog
+from django.views.static import serve
 
 admin.site.site_header = "Архив силов трибой"
 admin.site.site_title = "Архив силов трибой"
@@ -38,3 +39,12 @@ urlpatterns += i18n_patterns(
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+else:
+    # Nothing sits in front of gunicorn — the Cloudflare tunnel reaches it
+    # directly — so an uploaded protocol or photo has no other way to be
+    # served, and WhiteNoise handles only the collected static files. Django's
+    # own file view carries an archive's traffic, and unlike a startup scan it
+    # serves a scan the moment the admin saves it.
+    urlpatterns += [
+        re_path(r"^media/(?P<path>.*)$", serve, {"document_root": settings.MEDIA_ROOT}),
+    ]

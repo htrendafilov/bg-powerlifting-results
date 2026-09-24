@@ -32,6 +32,8 @@ class Command(BaseCommand):
                                  "писан по остарял набор категории")
         parser.add_argument("--attach", action="store_true",
                             help="закача файла към турнира като източник")
+        parser.add_argument("--title", default="",
+                            help="как да се изписва закаченият файл на страницата")
         parser.add_argument("--skip-blocked", action="store_true", help="внася въпреки спрените редове")
         parser.add_argument("--dry-run", action="store_true")
 
@@ -88,6 +90,7 @@ class Command(BaseCommand):
         summary = apply_import(
             competition, parsed, replace=not options["keep"],
             stored_file=stored, filename=Path(options["path"]).name if stored else "",
+            title=options["title"],
             **defaults
         )
         self.stdout.write(

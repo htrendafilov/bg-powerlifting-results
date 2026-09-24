@@ -627,6 +627,24 @@ class MergeSurvivesReimportTests(TestCase):
         self.assertEqual(found.pk, first.pk)
 
 
+class MediaServingTests(TestCase):
+    """Uploaded protocols and photos are reachable with DEBUG off, which is how
+    the site actually runs; nothing sits in front of gunicorn to serve them."""
+
+    def test_a_media_route_exists_when_debug_is_off(self):
+        from importlib import reload
+        from django.urls import clear_url_caches
+        import config.urls
+
+        with override_settings(DEBUG=False):
+            reload(config.urls)
+            clear_url_caches()
+            routes = [str(pattern.pattern) for pattern in config.urls.urlpatterns]
+            self.assertTrue(any("media" in route for route in routes), routes)
+        reload(config.urls)
+        clear_url_caches()
+
+
 class WeightClassEraTests(TestCase):
     """The women's 72 kg ran until the end of 2020, so the same class is right
     in 2018 and wrong in 2023."""
