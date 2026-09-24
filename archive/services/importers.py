@@ -344,10 +344,35 @@ def _parse_table(title, rows):
             item.errors.append("Липсва име.")
         parsed.rows.append(item)
     _assign_nation(parsed.rows)
+    _assign_age_codes(parsed.rows)
     if not parsed.rows:
         parsed.errors.append(f"{title}: разпознат е заглавен ред, но няма стартове.")
     return parsed
 
+
+# The federation's "ГР" column holds either the lowest age of the division (18,
+# 23, 24, 40, 70) or an ordinal code, and only the ordinal scheme reaches below
+# five, so the whole column decides which of the two it is.
+_ORDINAL_AGE_CODES = {
+    0: AgeGroup.OPEN,
+    1: AgeGroup.M1,
+    2: AgeGroup.M2,
+    3: AgeGroup.M3,
+    4: AgeGroup.M4,
+    18: AgeGroup.SUBJUNIOR,
+    23: AgeGroup.JUNIOR,
+}
+
+
+def _assign_age_codes(rows):
+    values = [int(row.age) for row in rows if row.age is not None]
+    if not any(value <= 4 for value in values):
+        return
+    for row in rows:
+        if row.age is None:
+            continue
+        row.age_group = row.age_group or _ORDINAL_AGE_CODES.get(int(row.age), "")
+        row.age = None
 
 # A Goodlift "Nation" column holds country codes at an international meet and
 # club names at a domestic one, so the whole column decides, not a single row.

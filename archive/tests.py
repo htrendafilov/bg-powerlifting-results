@@ -573,6 +573,40 @@ class SectionHeadingTests(TestCase):
         self.assertEqual(parsed.skipped, 57)
 
 
+class AgeCodeTests(TestCase):
+    """The federation heads one column "ГР" but fills it two different ways:
+    the division's lowest age, or an ordinal code (real files: Дупница 2023
+    against Горна Оряховица 2022)."""
+
+    HEAD = ["\u2116", "\u0418\u043c\u0435", "\u0424\u0430\u043c\u0438\u043b\u0438\u044f",
+            "\u041e\u0442\u0431\u043e\u0440", "\u0413\u0420", "\u0442\u0435\u0433\u043b\u043e",
+            "\u043a\u0430\u0442.", "\u043b\u0435\u04331", "\u043b\u0435\u04332", "\u043b\u0435\u04333"]
+
+    def _parse(self, codes):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(self.HEAD)
+        for index, code in enumerate(codes, start=1):
+            sheet.append([str(index), f"\u0418\u043c\u0435{index}", f"\u0424\u0430\u043c{index}",
+                          "\u041d\u0421\u0410", str(code), "74.5", "83", "100", "110", "120"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        return parse_upload("gr.xlsx", buffer.getvalue())
+
+    def test_ordinal_codes_become_divisions(self):
+        parsed = self._parse([0, 1, 2, 3, 4, 18, 23])
+        self.assertEqual(
+            [row.age_group for row in parsed.rows],
+            [AgeGroup.OPEN, AgeGroup.M1, AgeGroup.M2, AgeGroup.M3, AgeGroup.M4,
+             AgeGroup.SUBJUNIOR, AgeGroup.JUNIOR],
+        )
+
+    def test_a_column_of_ages_is_left_for_the_age_bands(self):
+        parsed = self._parse([18, 23, 24, 40, 70])
+        self.assertEqual([row.age_group for row in parsed.rows], [""] * 5)
+        self.assertEqual([int(row.age) for row in parsed.rows], [18, 23, 24, 40, 70])
+
+
 class HeaderWithoutNameTests(TestCase):
     """A header that ranks and measures but never names the lifter used to
     crash: the place column lives in layout.places, never in layout.mapping."""
