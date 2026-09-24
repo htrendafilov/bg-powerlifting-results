@@ -86,3 +86,17 @@ def class_fits(sex, weight_class, bodyweight, day):
     if weight_class.endswith("+") or bodyweight is None:
         return True
     return Decimal(str(bodyweight)) <= Decimal(weight_class)
+
+
+def sex_for_class(weight_class, day):
+    """The sex a class belongs to, where only one sex contests it.
+
+    Since 2011 the men's and the women's lists share no class, so a protocol
+    that mixes both without saying which is which still says it through the
+    class. Before 2011 they overlapped and the class tells nothing.
+    """
+    era = era_for(day)
+    if era not in MODERN_ERAS or not weight_class:
+        return ""
+    owners = [sex for sex in ("M", "F") if weight_class in classes_of(sex, era)]
+    return owners[0] if len(owners) == 1 else ""

@@ -18,10 +18,10 @@ from archive.models import (
 from archive.models import photo_path
 from django.core.files.base import ContentFile
 from archive.services.commit import apply_import, athlete_for, prepare_rows
-from archive.services.importers import _equipment_in_text, parse_upload
+from archive.services.importers import _division_label, _equipment_in_text, parse_upload
 from archive.services.merge import duplicate_candidates, merge_athletes
 from archive.services.visibility import visible_athletes, visible_competitions, visible_results
-from archive.services.weight_classes import class_fits, weight_class_for
+from archive.services.weight_classes import class_fits, sex_for_class, weight_class_for
 from archive.services.names import (
     athlete_name_key, normalize_name, reverse_transliterate, transliterate,
 )
@@ -709,6 +709,25 @@ class MediaServingTests(TestCase):
             self.assertTrue(any("media" in route for route in routes), routes)
         reload(config.urls)
         clear_url_caches()
+
+
+class SexFromClassTests(TestCase):
+    """Кърджали 2025 lists women and men in one table with no sex anywhere;
+    since 2011 the class alone tells them apart."""
+
+    def test_a_class_contested_by_one_sex_names_it(self):
+        day = date(2025, 9, 19)
+        self.assertEqual(sex_for_class("84+", day), "F")
+        self.assertEqual(sex_for_class("47", day), "F")
+        self.assertEqual(sex_for_class("83", day), "M")
+        self.assertEqual(sex_for_class("120+", day), "M")
+
+    def test_before_2011_the_lists_overlap_and_the_class_says_nothing(self):
+        self.assertEqual(sex_for_class("52", date(2008, 5, 24)), "")
+
+    def test_a_bare_age_in_the_division_column_is_the_division(self):
+        self.assertEqual(_division_label("18"), AgeGroup.SUBJUNIOR)
+        self.assertEqual(_division_label("23"), AgeGroup.JUNIOR)
 
 
 class WeightClassEraTests(TestCase):

@@ -19,7 +19,7 @@ from archive.models import (
 )
 from archive.services.names import athlete_name_key, is_cyrillic, normalize_name, transliterate
 from archive.services.records import recalculate_records
-from archive.services.weight_classes import class_fits, weight_class_for
+from archive.services.weight_classes import class_fits, sex_for_class, weight_class_for
 
 ATTEMPT_FIELDS = [
     "squat1",
@@ -136,6 +136,8 @@ def prepare_rows(parsed, *, default_sex, default_equipment, default_event,
     blocked = []
     for index, item in enumerate(parsed.rows, start=1):
         item.sex = item.sex or default_sex
+        if not item.sex and meet_date:
+            item.sex = sex_for_class(item.weight_class, meet_date)
         # A per-row Equipment column beats the operator, who in turn beats a
         # guess made from the meet title.
         if item.equipment_source not in {"row", "sheet"} and default_equipment != "auto":
