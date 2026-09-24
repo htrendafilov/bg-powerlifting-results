@@ -14,13 +14,19 @@
   </div>
   {% if competition.notes %}<p>{{ competition.notes }}</p>{% endif %}
 
-  {% if protocols or sources %}
+  {% if protocols or sources or copies %}
     <p class="files-inline">
       {% if protocols %}
         <span class="files-label">Протокол:</span>
         {% for item in protocols %}
           {% if item.file %}<a href="{{ item.file.url }}">{{ item.title|default:item.get_kind_display }}</a>
           {% elif item.url %}<a href="{{ item.url }}">{{ item.title|default:"линк" }}</a>{% endif %}
+        {% endfor %}
+      {% endif %}
+      {% if copies %}
+        <span class="files-label">Копие тук:</span>
+        {% for item in copies %}
+          <a href="{{ item.file.url }}">{{ item.title|default:"файл" }}</a>
         {% endfor %}
       {% endif %}
       {% for item in sources %}

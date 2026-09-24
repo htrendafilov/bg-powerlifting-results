@@ -103,7 +103,11 @@ def competition_detail(request, slug):
             "results": results,
             "groups": _group_results(results),
             "scans": [f for f in files if f.kind == FileKind.SCAN and f.file],
-            "protocols": [f for f in files if f.kind != FileKind.OPL],
+            # The federation's own link is the protocol; a file uploaded here is
+            # the same bytes kept where they cannot vanish, so it is shown as a
+            # copy — unless there is no link, when it is all the archive has.
+            "protocols": _protocols(files),
+            "copies": _local_copies(files),
             "sources": [f for f in files if f.kind == FileKind.OPL and f.url],
             **_visible_columns(results),
             "has_any_results": has_any_results,
@@ -304,6 +308,19 @@ def _competition_from_options(options, parsed):
 # Sex first, then weight class, the way a protocol is read. Age group and
 # equipment stay as columns rather than further nesting, so one class block
 # holds every division that lifted in it.
+def _protocols(files):
+    kept = [f for f in files if f.kind != FileKind.OPL]
+    linked = [f for f in kept if f.url]
+    return linked or [f for f in kept if f.file]
+
+
+def _local_copies(files):
+    kept = [f for f in files if f.kind != FileKind.OPL]
+    if not any(f.url for f in kept):
+        return []
+    return [f for f in kept if f.file]
+
+
 def _visible_columns(results):
     def used(best, first):
         return any(getattr(r, best) or getattr(r, first) for r in results)
