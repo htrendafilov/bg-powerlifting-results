@@ -1,4 +1,5 @@
 import re
+import tempfile
 from collections import Counter
 from dataclasses import replace
 from datetime import date
@@ -575,6 +576,9 @@ class SectionHeadingTests(TestCase):
         self.assertEqual(parsed.skipped, 57)
 
 
+# Django does not isolate MEDIA_ROOT for tests, so an attachment written here
+# would otherwise land in the repo and be deployed with the real protocols.
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 class ReimportAttachmentTests(TestCase):
     """Re-running an import must not leave the protocol attached twice."""
 
