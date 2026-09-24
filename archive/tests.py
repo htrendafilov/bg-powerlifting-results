@@ -1,5 +1,6 @@
 import re
 from collections import Counter
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
@@ -571,6 +572,47 @@ class SectionHeadingTests(TestCase):
         data = (Path(__file__).parent / "tests_data" / "goodlift_bench_2026.xlsx").read_bytes()
         parsed = parse_upload("b.xlsx", data)
         self.assertEqual(parsed.skipped, 57)
+
+
+class SheetNameTests(TestCase):
+    """A workbook split into "жени" / "мъже без екип" / "с екип" names its rows
+    by the sheet they sit on (real file: София 2023)."""
+
+    def _book(self, sheets):
+        workbook = openpyxl.Workbook()
+        workbook.remove(workbook.active)
+        for name in sheets:
+            sheet = workbook.create_sheet(name)
+            sheet.append(["PL.", "   Name", "Nation", "Weight", "1 Att.", "2 Att.", "3 Att."])
+            sheet.append(["1", f"Lifter {name}", "NSA", "82.6", "100", "110", "120"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        return parse_upload("split.xlsx", buffer.getvalue())
+
+    def test_the_sheet_name_gives_the_sex_even_when_qualified(self):
+        parsed = self._book(["\u0436\u0435\u043d\u0438", "\u043c\u044a\u0436\u0435 \u0431\u0435\u0437 \u0435\u043a\u0438\u043f"])
+        self.assertEqual([row.sex for row in parsed.rows], [Sex.F, Sex.M])
+
+    def test_an_operator_flag_does_not_overrule_the_sheet(self):
+        parsed = self._book(["\u0441 \u0435\u043a\u0438\u043f", "\u0436\u0435\u043d\u0438"])
+        ready, _ = prepare_rows(
+            parsed, default_sex="F", default_equipment="classic", default_event="B",
+            default_age_group="open", meet_date=date(2023, 5, 27),
+        )
+        self.assertEqual(
+            [(row.sex, row.equipment) for row in ready],
+            [(Sex.F, Equipment.EQUIPPED), (Sex.F, Equipment.CLASSIC)],
+        )
+
+    def test_the_default_age_group_only_fills_the_gaps(self):
+        parsed = self._book(["\u0436\u0435\u043d\u0438"])
+        parsed.rows[0].age_group = AgeGroup.JUNIOR
+        parsed.rows.append(replace(parsed.rows[0], age_group="", raw_name="Second Lifter"))
+        ready, _ = prepare_rows(
+            parsed, default_sex="F", default_equipment="classic", default_event="B",
+            default_age_group="open", meet_date=date(2023, 5, 27),
+        )
+        self.assertEqual([row.age_group for row in ready], [AgeGroup.JUNIOR, AgeGroup.OPEN])
 
 
 class AgeCodeTests(TestCase):

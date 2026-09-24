@@ -33,12 +33,13 @@ ATTEMPT_FIELDS = [
 ]
 
 
-def apply_import(competition, parsed, *, default_sex, default_equipment, default_event, replace, stored_file=None, filename=""):
+def apply_import(competition, parsed, *, default_sex, default_equipment, default_event, default_age_group="", replace, stored_file=None, filename=""):
     ready, blocked = prepare_rows(
         parsed,
         default_sex=default_sex,
         default_equipment=default_equipment,
         default_event=default_event,
+        default_age_group=default_age_group,
         meet_level=competition.level,
         meet_date=competition.start_date,
     )
@@ -113,14 +114,14 @@ def _country_for(value, home_country):
 
 
 def prepare_rows(parsed, *, default_sex, default_equipment, default_event,
-                 meet_level=MeetLevel.NATIONAL, meet_date=None):
+                 default_age_group="", meet_level=MeetLevel.NATIONAL, meet_date=None):
     ready = []
     blocked = []
     for index, item in enumerate(parsed.rows, start=1):
         item.sex = item.sex or default_sex
         # A per-row Equipment column beats the operator, who in turn beats a
         # guess made from the meet title.
-        if item.equipment_source != "row" and default_equipment != "auto":
+        if item.equipment_source not in {"row", "sheet"} and default_equipment != "auto":
             item.equipment = default_equipment
         if default_event != "auto":
             item.event = default_event
@@ -128,6 +129,7 @@ def prepare_rows(parsed, *, default_sex, default_equipment, default_event,
             item.event = ""
         if not item.age_group and item.age:
             item.age_group = _age_group_for(item.age)
+        item.age_group = item.age_group or default_age_group
         if not item.weight_class and item.bodyweight and meet_date:
             item.weight_class = weight_class_for(
                 item.sex, item.bodyweight, meet_date, item.age_group

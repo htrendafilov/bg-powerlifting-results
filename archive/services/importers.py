@@ -186,7 +186,9 @@ def parse_upload(filename, payload):
         text = payload.decode("utf-8-sig", errors="replace")
         rows = list(csv.reader(StringIO(text)))
         return _parse_table("Файл", rows)
-    if name.endswith(".xlsx"):
+    # openpyxl reads a macro-enabled workbook exactly like a plain one, and the
+    # federation publishes some protocols as .xlsm.
+    if name.endswith((".xlsx", ".xlsm")):
         workbook = openpyxl.load_workbook(BytesIO(payload), data_only=True, read_only=True)
         parsed_sheets = []
         for sheet in workbook.worksheets:
@@ -206,7 +208,7 @@ def parse_upload(filename, payload):
                     merged.skipped_sections.append(label)
         merged.duplicates = _drop_duplicate_rows(merged.rows)
         return merged
-    return ParsedFile(kind="", errors=["Приемат се .xlsx и .csv. Стар .xls се качва като файл към турнира и се нанася отделно."])
+    return ParsedFile(kind="", errors=["Приемат се .xlsx, .xlsm и .csv. Стар .xls се качва като файл към турнира и се нанася отделно."])
 
 
 # Workbooks often keep the same protocol on several sheets ("protokol" and
@@ -285,6 +287,11 @@ def _parse_table(title, rows):
     rows_carry_division = bool(layout.divisions)
     sheet_event = _event_from_columns(mapping) if kind == "opl" else ""
     title_equipment = _equipment_in_text(blob)
+    # Workbooks are often split into a sheet per sex or per equipment ("жени",
+    # "мъже без екип"). That names the rows, so it outranks the meet title and
+    # the operator, exactly as a per-row column would.
+    sheet_sex = _sex_in_text(title)
+    sheet_equipment = _equipment_in_text(title)
     deadlift_only = len(layout.attempts) in {3, 4} and _mentions_deadlift(blob)
     for row in rows[header_index + 1 :]:
         if not any(row):
@@ -326,8 +333,11 @@ def _parse_table(title, rows):
             continue
         item.age_group = item.age_group or division
         item.event = item.event or sheet_event
-        item.sex = item.sex or sex
+        item.sex = item.sex or sex or sheet_sex
         item.weight_class = item.weight_class or weight_class
+        if not item.equipment and sheet_equipment:
+            item.equipment = sheet_equipment
+            item.equipment_source = "sheet"
         if not item.equipment and title_equipment:
             item.equipment = title_equipment
             item.equipment_source = "title"
@@ -675,6 +685,17 @@ def _sex_label(value):
     if text in {"m", "мъж", "мъже", "men", "male"}:
         return Sex.M
     if text in {"f", "ж", "жена", "жени", "women", "female"}:
+        return Sex.F
+    return ""
+
+
+# A sheet name may qualify the sex ("мъже без екип"); a section label inside the
+# sheet may not, because there a stray word would capture the rows after it.
+def _sex_in_text(value):
+    text = (value or "").lower()
+    if re.search(r"\b(мъже|мъж|men|male)\b", text):
+        return Sex.M
+    if re.search(r"\b(жени|жена|women|female)\b", text):
         return Sex.F
     return ""
 

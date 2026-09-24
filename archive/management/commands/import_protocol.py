@@ -4,6 +4,9 @@ The same path as the /import/ page, for loading the back catalogue without
 clicking through it once per meet.
 """
 
+from io import BytesIO
+from pathlib import Path
+
 from django.core.management.base import BaseCommand, CommandError
 
 from archive.models import Competition, FileKind
@@ -12,7 +15,7 @@ from archive.services.importers import parse_upload
 
 
 class Command(BaseCommand):
-    help = "Внася протокол (.xlsx/.csv) в съществуващо състезание."
+    help = "Внася протокол (.xlsx/.xlsm/.csv) в съществуващо състезание."
 
     def add_arguments(self, parser):
         parser.add_argument("path")
@@ -20,7 +23,12 @@ class Command(BaseCommand):
         parser.add_argument("--sex", default="", choices=["", "M", "F"])
         parser.add_argument("--equipment", default="auto", choices=["auto", "classic", "equipped"])
         parser.add_argument("--event", default="auto", choices=["auto", "SBD", "B", "D", "PP"])
+        parser.add_argument("--age-group", default="", dest="age_group",
+                            choices=["", "subjunior", "junior", "open", "m1", "m2", "m3", "m4"],
+                            help="за протокол без възрастови секции")
         parser.add_argument("--keep", action="store_true", help="добавя, вместо да замени")
+        parser.add_argument("--attach", action="store_true",
+                            help="закача файла към турнира като източник")
         parser.add_argument("--skip-blocked", action="store_true", help="внася въпреки спрените редове")
         parser.add_argument("--dry-run", action="store_true")
 
@@ -40,6 +48,7 @@ class Command(BaseCommand):
             "default_sex": options["sex"],
             "default_equipment": options["equipment"],
             "default_event": options["event"],
+            "default_age_group": options["age_group"],
         }
         ready, blocked = prepare_rows(
             parsed, meet_level=competition.level, meet_date=competition.start_date, **defaults
@@ -71,8 +80,11 @@ class Command(BaseCommand):
             dropped = competition.files.filter(kind=FileKind.OPL).delete()[0]
             if dropped:
                 self.stdout.write(f"  махнат източник OpenPowerlifting: {dropped}")
+        stored = BytesIO(payload) if options["attach"] else None
         summary = apply_import(
-            competition, parsed, replace=not options["keep"], **defaults
+            competition, parsed, replace=not options["keep"],
+            stored_file=stored, filename=Path(options["path"]).name if stored else "",
+            **defaults
         )
         self.stdout.write(
             f"  записани: {summary['created']}   нови състезатели: {summary['athletes']}"
