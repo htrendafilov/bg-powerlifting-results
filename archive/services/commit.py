@@ -7,6 +7,7 @@ from archive.models import (
     BG_COUNTRIES,
     AgeGroup,
     Athlete,
+    AthleteAlias,
     CompetitionFile,
     Event,
     FileKind,
@@ -182,6 +183,10 @@ def athlete_for(raw_name, sex):
     existing = list(Athlete.objects.filter(sex=sex, name_key=key)[:1])
     if existing:
         return existing[0], False
+    # A spelling that was merged away must not come back as a new athlete.
+    alias = AthleteAlias.objects.filter(sex=sex, name_key=key).select_related("athlete").first()
+    if alias:
+        return alias.athlete, False
     if is_cyrillic(raw_name):
         athlete = Athlete(name_bg=raw_name, name_lat=transliterate(raw_name), sex=sex)
     else:

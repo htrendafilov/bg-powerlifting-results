@@ -14,7 +14,7 @@ from archive.models import (
     AgeGroup, Athlete, AthletePhoto, Competition, Equipment, Event, Lift, MeetLevel,
     CompetitionFile, FileKind, Record, RecordOrigin, Result, Sex, SiteSettings,
 )
-from archive.services.commit import apply_import, prepare_rows
+from archive.services.commit import apply_import, athlete_for, prepare_rows
 from archive.services.importers import _equipment_in_text, parse_upload
 from archive.services.merge import duplicate_candidates, merge_athletes
 from archive.services.visibility import visible_athletes, visible_competitions, visible_results
@@ -308,7 +308,8 @@ class RealProtocolTests(TestCase):
     def test_goodlift_bench_drops_team_and_best_lifter_tables(self):
         parsed = parse_upload("bench.xlsx", self._fixture("goodlift_bench_2026.xlsx"))
         self.assertEqual(parsed.kind, "goodlift")
-        self.assertEqual(len(parsed.rows), 85)
+        # 85 placed lifters plus the two who failed every attempt.
+        self.assertEqual(len(parsed.rows), 87)
         self.assertEqual(parsed.skipped, 57)
         self.assertIn("Nation (points)", parsed.skipped_sections)
         names = {row.raw_name for row in parsed.rows}
@@ -318,8 +319,8 @@ class RealProtocolTests(TestCase):
     def test_goodlift_seniors_are_not_filed_as_juniors(self):
         parsed = parse_upload("bench.xlsx", self._fixture("goodlift_bench_2026.xlsx"))
         by_group = Counter(row.age_group for row in parsed.rows)
-        self.assertEqual(by_group[AgeGroup.OPEN], 31)
-        self.assertEqual(by_group[AgeGroup.JUNIOR], 20)
+        self.assertEqual(by_group[AgeGroup.OPEN], 32)
+        self.assertEqual(by_group[AgeGroup.JUNIOR], 21)
 
     def test_goodlift_nation_column_of_a_domestic_meet_is_the_club(self):
         parsed = parse_upload("bench.xlsx", self._fixture("goodlift_bench_2026.xlsx"))
@@ -329,12 +330,12 @@ class RealProtocolTests(TestCase):
     def test_goodlift_bench_needs_an_equipment_choice(self):
         parsed = parse_upload("bench.xlsx", self._fixture("goodlift_bench_2026.xlsx"))
         _, blocked = prepare_rows(parsed, default_sex=Sex.M, default_equipment="auto", default_event="auto")
-        self.assertEqual(len(blocked), 85)
+        self.assertEqual(len(blocked), 87)
         self.assertIn("Няма екипировка", blocked[0]["problems"][0])
         ready, blocked = prepare_rows(
             parsed, default_sex=Sex.M, default_equipment=Equipment.CLASSIC, default_event="auto"
         )
-        self.assertEqual((len(ready), len(blocked)), (85, 0))
+        self.assertEqual((len(ready), len(blocked)), (87, 0))
 
     def test_opl_sbd_protocol_still_imports_whole(self):
         parsed = parse_upload("svishtov.xlsx", self._fixture("opl_sbd_2026.xlsx"))
@@ -596,6 +597,63 @@ class ReimportAttachmentTests(TestCase):
             )
         self.assertEqual(competition.files.filter(kind=FileKind.EXCEL).count(), 1)
         self.assertEqual(competition.results.count(), 1)
+
+
+class MergeSurvivesReimportTests(TestCase):
+    """Re-importing the protocol that used the absorbed spelling used to bring
+    the duplicate straight back."""
+
+    def test_the_absorbed_spelling_lands_on_the_survivor(self):
+        target = Athlete.objects.create(name_bg="\u041c\u0430\u0440\u0438\u044f \u0422.-\u0422.", sex=Sex.F)
+        other = Athlete.objects.create(name_bg="\u041c\u0430\u0440\u0438\u044f \u0422\u0430\u0431\u0430\u043a\u043e\u0432\u0430", sex=Sex.F)
+        merge_athletes(target, [other], recalculate=False)
+        found, created = athlete_for("\u041c\u0430\u0440\u0438\u044f \u0422\u0430\u0431\u0430\u043a\u043e\u0432\u0430", Sex.F)
+        self.assertFalse(created)
+        self.assertEqual(found.pk, target.pk)
+        self.assertEqual(Athlete.objects.count(), 1)
+
+    def test_a_second_merge_carries_the_aliases_along(self):
+        first = Athlete.objects.create(name_bg="\u0410 \u0410", sex=Sex.F)
+        second = Athlete.objects.create(name_bg="\u0411 \u0411", sex=Sex.F)
+        third = Athlete.objects.create(name_bg="\u0412 \u0412", sex=Sex.F)
+        merge_athletes(second, [third], recalculate=False)
+        merge_athletes(first, [second], recalculate=False)
+        found, created = athlete_for("\u0412 \u0412", Sex.F)
+        self.assertFalse(created)
+        self.assertEqual(found.pk, first.pk)
+
+
+class FailedAttemptTests(TestCase):
+    """Goodlift writes every attempt as a plain weight; only RESULT says which
+    of them counted, and a lifter who failed all three is ranked with a dash."""
+
+    def _parsed(self):
+        data = (Path(__file__).parent / "tests_data" / "goodlift_bench_2026.xlsx").read_bytes()
+        return parse_upload("bench.xlsx", data)
+
+    def test_an_attempt_above_the_result_is_marked_failed(self):
+        rows = {row.raw_name: row for row in self._parsed().rows}
+        row = rows["Lilov Stiliyan"]
+        self.assertEqual(
+            [row.attempts[f"bench{n}"] for n in (1, 2, 3)],
+            [Decimal("170.0"), Decimal("185.0"), Decimal("-190.0")],
+        )
+        self.assertEqual(row.best_bench, Decimal("185.0"))
+
+    def test_of_several_attempts_at_the_result_only_the_last_counted(self):
+        rows = {row.raw_name: row for row in self._parsed().rows}
+        row = rows["Traykov David"]
+        self.assertEqual(
+            [row.attempts[f"bench{n}"] for n in (1, 2, 3)],
+            [Decimal("130.0"), Decimal("-140.0"), Decimal("-140.0")],
+        )
+
+    def test_a_lifter_who_failed_everything_is_kept_as_disqualified(self):
+        rows = {row.raw_name: row for row in self._parsed().rows}
+        row = rows["Bogdanov Kristiyan"]
+        self.assertEqual(row.place, "DQ")
+        self.assertIsNone(row.best_bench)
+        self.assertTrue(all(row.attempts[f"bench{n}"] < 0 for n in (1, 2, 3)))
 
 
 class MergeNoteTests(TestCase):

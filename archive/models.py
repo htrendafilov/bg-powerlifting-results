@@ -147,6 +147,25 @@ class Athlete(models.Model):
         return self.adult_confirmed
 
 
+class AthleteAlias(models.Model):
+    """A name key an absorbed athlete answered to. Without it, re-importing the
+    protocol that used that spelling would create the duplicate all over again."""
+
+    athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name="aliases")
+    name_key = models.CharField(max_length=220, db_index=True)
+    sex = models.CharField("Пол", max_length=1, choices=Sex.choices)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["name_key", "sex"], name="unique_alias_per_sex")
+        ]
+        verbose_name = "Слято име"
+        verbose_name_plural = "Слети имена"
+
+    def __str__(self):
+        return f"{self.name_key} -> {self.athlete}"
+
+
 class AthletePhoto(models.Model):
     athlete = models.ForeignKey(Athlete, on_delete=models.CASCADE, related_name="photos")
     year = models.PositiveSmallIntegerField("Година")

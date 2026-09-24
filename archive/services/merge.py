@@ -10,7 +10,7 @@ import difflib
 
 from django.db import transaction
 
-from archive.models import Athlete
+from archive.models import AthleteAlias, Athlete
 from archive.services.names import name_tokens
 from archive.services.records import recalculate_records
 
@@ -29,6 +29,11 @@ def merge_athletes(target, others, *, recalculate=True):
         other.records.update(athlete=target)
         other.photos.update(athlete=target)
         _fill_gaps(target, other)
+        other.aliases.update(athlete=target)
+        if other.name_key and other.name_key != target.name_key:
+            AthleteAlias.objects.update_or_create(
+                name_key=other.name_key, sex=other.sex, defaults={"athlete": target}
+            )
         absorbed.append(other.display_name or other.name_lat or str(other.pk))
         other.delete()
     # The same spelling can come back from a later import, so a name already

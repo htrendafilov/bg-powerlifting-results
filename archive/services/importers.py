@@ -531,6 +531,26 @@ _ATTEMPT_BLOCKS = {
 }
 
 
+# Goodlift sheets and the federation's own tables mark no failure: every attempt
+# is a plain weight, and only the lift's result says which of them counted. An
+# attempt above the result cannot have been good, and where several equal it
+# only the last one was — a good lift may not be repeated, a failed one may.
+# Attempts below the result stay as they are: nothing in the sheet tells them
+# apart from a lighter opener.
+def _mark_failed_attempts(item, lift, best):
+    numbers = [n for n in (1, 2, 3) if item.attempts.get(f"{lift}{n}") is not None]
+    if not numbers or any(item.attempts[f"{lift}{n}"] <= 0 for n in numbers):
+        return
+    if best is None:
+        for number in numbers:
+            item.attempts[f"{lift}{number}"] = -item.attempts[f"{lift}{number}"]
+        return
+    good = max((n for n in numbers if item.attempts[f"{lift}{n}"] == best), default=None)
+    for number in numbers:
+        if number != good and item.attempts[f"{lift}{number}"] >= best:
+            item.attempts[f"{lift}{number}"] = -item.attempts[f"{lift}{number}"]
+
+
 def _row_from_mapping(row, mapping, layout, kind):
     row_equipment = _equipment_in_text(_mapped(row, mapping, "equipment")) or ""
     item = ParsedRow(
@@ -569,9 +589,12 @@ def _row_from_mapping(row, mapping, layout, kind):
             "deadlift4",
         ):
             item.attempts[name] = _attempt(row, mapping, name)
-        item.best_squat = _positive(_mapped(row, mapping, "best_squat")) or _best_of(item, "squat")
-        item.best_bench = _positive(_mapped(row, mapping, "best_bench")) or _best_of(item, "bench")
-        item.best_deadlift = _positive(_mapped(row, mapping, "best_deadlift")) or _best_of(item, "deadlift")
+        stated = set(mapping.values())
+        for lift in ("squat", "bench", "deadlift"):
+            best = _positive(_mapped(row, mapping, f"best_{lift}"))
+            if f"best_{lift}" in stated:
+                _mark_failed_attempts(item, lift, best)
+            setattr(item, f"best_{lift}", best or _best_of(item, lift))
         item.total = _positive(_mapped(row, mapping, "total"))
     else:
         blocks = _ATTEMPT_BLOCKS.get(len(layout.attempts))
@@ -592,7 +615,11 @@ def _row_from_mapping(row, mapping, layout, kind):
         final = _positive(_cell(row, layout.results[-1])) if layout.results else None
         if len(blocks) == 1:
             item.event = Event.B
-            item.best_bench = final or _best_of(item, "bench")
+            if layout.results:
+                _mark_failed_attempts(item, "bench", final)
+                item.best_bench = final
+            else:
+                item.best_bench = _best_of(item, "bench")
         else:
             item.event = Event.SBD
             item.best_squat = _best_of(item, "squat")
@@ -661,9 +688,14 @@ def _single_label(row):
     return ""
 
 
+# Goodlift ranks a lifter who failed every attempt with a dash and prints
+# "disq." for the points, so the dash is a placing, not an empty cell.
+_DASHES = {"\u2014", "\u2013", "-"}
+
+
 def _is_place(value):
     text = (value or "").strip().upper()
-    if text in {"NS", "DQ", "DD", "G", "DNS", "DSQ"}:
+    if text in {"NS", "DQ", "DD", "G", "DNS", "DSQ"} or text in _DASHES:
         return True
     try:
         number = float(text.replace(",", "."))
@@ -674,6 +706,8 @@ def _is_place(value):
 
 def _clean_place(value):
     text = (value or "").strip().upper()
+    if text in _DASHES:
+        return "DQ"
     if text in {"NS", "DQ", "DD", "G", "DNS", "DSQ"}:
         return {"DNS": "NS", "DSQ": "DQ"}.get(text, text)
     try:
