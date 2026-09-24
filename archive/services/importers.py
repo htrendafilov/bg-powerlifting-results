@@ -64,6 +64,7 @@ _HEADER_ALIASES = {
     "отбор": "club",
     "клуб": "club",
     "дивизия": "division",
+    "група": "division",
     "възрастовагрупа": "division",
     "екипировка": "equipment",
     "тегло": "bodyweight",
@@ -551,6 +552,7 @@ def _row_from_mapping(row, mapping, layout, kind):
     )
     for index in layout.divisions:
         _apply_division(item, _cell(row, index))
+    _split_masters_suffix(item)
     if kind == "opl":
         for name in (
             "squat1",
@@ -762,11 +764,43 @@ def _division_label(value):
     return ""
 
 
+_BG_MASTERS = {"1": AgeGroup.M1, "2": AgeGroup.M2, "3": AgeGroup.M3, "4": AgeGroup.M4}
+
+
+# Bulgarian protocols spell the division out: "Жени до 18г.", "Мъже", "Ветерани
+# Мъже". An unnumbered "ветерани" leaves the band open rather than guessing M1.
+def _bg_division(value):
+    text = (value or "").strip().lower()
+    sex = _sex_in_text(text)
+    if not sex:
+        return "", ""
+    if re.search(r"до\s*18", text):
+        return sex, AgeGroup.SUBJUNIOR
+    if re.search(r"до\s*23", text):
+        return sex, AgeGroup.JUNIOR
+    match = re.search(r"ветеран\w*\s*([1-4])", text)
+    if match:
+        return sex, _BG_MASTERS[match.group(1)]
+    if "ветеран" in text or "мастер" in text:
+        return sex, ""
+    return sex, AgeGroup.OPEN
+
+
 # OpenPowerlifting-style division codes such as "M-CL-PL" carry the sex, the
 # equipment and the discipline in one cell, alongside a plain age division.
 _CODE_EQUIPMENT = {"CL": Equipment.CLASSIC, "R": Equipment.CLASSIC, "RAW": Equipment.CLASSIC,
                    "EQ": Equipment.EQUIPPED, "SP": Equipment.EQUIPPED}
 _CODE_EVENT = {"PL": Event.SBD, "BP": Event.B, "DL": Event.D, "PP": Event.PP}
+
+
+# When the division column says only "Ветерани", the band is appended to the
+# name instead. Left in place it would also register the lifter under it.
+def _split_masters_suffix(item):
+    match = re.search(r"\s+[\u041cM]([1-4])\s*$", item.raw_name)
+    if not match:
+        return
+    item.raw_name = item.raw_name[: match.start()].strip()
+    item.age_group = item.age_group or _BG_MASTERS[match.group(1)]
 
 
 def _apply_division(item, value):
@@ -779,6 +813,11 @@ def _apply_division(item, value):
             item.equipment = _CODE_EQUIPMENT[equipment]
             item.equipment_source = "row"
         item.event = item.event or _CODE_EVENT.get(event, "")
+        return
+    sex, age_group = _bg_division(value)
+    if sex:
+        item.sex = item.sex or sex
+        item.age_group = item.age_group or age_group
         return
     item.age_group = item.age_group or _division_label(value)
 

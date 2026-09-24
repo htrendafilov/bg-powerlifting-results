@@ -574,6 +574,45 @@ class SectionHeadingTests(TestCase):
         self.assertEqual(parsed.skipped, 57)
 
 
+class BulgarianDivisionTests(TestCase):
+    """The federation spells the division out and, when it says only
+    "Ветерани", appends the band to the name (real file: Дупница 2022)."""
+
+    def _row(self, division, name="\u0418\u0432\u0430\u043d \u041f\u0435\u0442\u0440\u043e\u0432"):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["\u2116", "\u0438\u043c\u0435", "\u043a\u043b\u0443\u0431",
+                      "\u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0438\u044f",
+                      "\u0442\u0435\u0433\u043b\u043e", "\u0433\u0440\u0443\u043f\u0430",
+                      "\u043b\u0435\u04331", "\u043b\u0435\u04332", "\u043b\u0435\u04333"])
+        sheet.append(["1", name, "\u041d\u0421\u0410", "83", "82.6", division, "100", "110", "120"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        return parse_upload("bg.xlsx", buffer.getvalue()).rows[0]
+
+    def test_a_spelled_out_division_gives_the_sex_and_the_age(self):
+        cases = {
+            "\u0416\u0435\u043d\u0438 \u0434\u043e 18\u0433.": (Sex.F, AgeGroup.SUBJUNIOR),
+            "\u041c\u044a\u0436\u0435 \u0434\u043e 23\u0433.": (Sex.M, AgeGroup.JUNIOR),
+            "\u041c\u044a\u0436\u0435": (Sex.M, AgeGroup.OPEN),
+            "\u0412\u0435\u0442\u0435\u0440\u0430\u043d\u0438 2 \u041c\u044a\u0436\u0435": (Sex.M, AgeGroup.M2),
+        }
+        for label, expected in cases.items():
+            row = self._row(label)
+            self.assertEqual((row.sex, row.age_group), expected, label)
+
+    def test_an_unnumbered_veteran_leaves_the_band_open(self):
+        row = self._row("\u0412\u0435\u0442\u0435\u0440\u0430\u043d\u0438 \u041c\u044a\u0436\u0435")
+        self.assertEqual(row.sex, Sex.M)
+        self.assertEqual(row.age_group, "")
+
+    def test_a_band_appended_to_the_name_is_taken_off_it(self):
+        row = self._row("\u0412\u0435\u0442\u0435\u0440\u0430\u043d\u0438 \u041c\u044a\u0436\u0435",
+                        name="\u0410\u0434\u0440\u0438\u0430\u043d \u0425\u0440\u0438\u0441\u0442\u043e\u0432 \u041c1")
+        self.assertEqual(row.raw_name, "\u0410\u0434\u0440\u0438\u0430\u043d \u0425\u0440\u0438\u0441\u0442\u043e\u0432")
+        self.assertEqual(row.age_group, AgeGroup.M1)
+
+
 class SheetNameTests(TestCase):
     """A workbook split into "жени" / "мъже без екип" / "с екип" names its rows
     by the sheet they sit on (real file: София 2023)."""
