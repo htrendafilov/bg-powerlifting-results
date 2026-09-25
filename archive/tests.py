@@ -1003,6 +1003,32 @@ class ClassRankTests(TestCase):
         self.assertEqual([(r.raw_name, r.place) for r in rows], [("Пешо Иванов", "DQ")])
 
 
+class TotalStatusTests(TestCase):
+    """Дупница 2023 and 2024 write "DSQ" in the total column; the place column
+    still held 8 for one lifter and nothing at all for another."""
+
+    def _rows(self, *bodies):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["№", "№", "Име", "Фамилия", "тегло", "клек", "лег", "тяга", "трибой"])
+        for body in bodies:
+            sheet.append(body)
+        buffer = BytesIO()
+        workbook.save(buffer)
+        return parse_upload("bg.xlsx", buffer.getvalue()).rows
+
+    def test_the_status_in_the_total_column_is_the_place(self):
+        rows = self._rows(
+            ["53", "8", "Данаил", "Димитров", "82.2", "215", "0", "0", "DSQ"],
+            ["47", "", "Преслав", "Пейчев", "98.4", "0", "110", "210", "DSQ"],
+            ["54", "1", "Иван", "Петров", "82.6", "200", "120", "220", "540"],
+        )
+        self.assertEqual(
+            [(r.raw_name, r.place) for r in rows],
+            [("Данаил Димитров", "DQ"), ("Преслав Пейчев", "DQ"), ("Иван Петров", "1")],
+        )
+
+
 class BulgarianDivisionTests(TestCase):
     """The federation spells the division out and, when it says only
     "Ветерани", appends the band to the name (real file: Дупница 2022)."""

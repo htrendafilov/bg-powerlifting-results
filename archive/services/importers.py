@@ -336,8 +336,12 @@ def _parse_table(title, rows):
         ):
             # A lifter who weighed in and bombed out has no placing, only a
             # start number; one who never weighed in did not show up.
-            row = [*row, *[""] * (rank + 1 - len(row))]
-            row[rank] = "DQ"
+            row = _with_cell(row, rank, "DQ")
+        # The judges write the status where the total would be ("DSQ"), and it
+        # outranks whatever the place column still holds — even an empty one.
+        status = _total_status(_mapped(row, mapping, "total"))
+        if status:
+            row = _with_cell(row, _index_of(mapping, "place"), status)
         if not _is_place(_mapped(row, mapping, "place")):
             continue
         if ignoring:
@@ -540,6 +544,24 @@ def _is_result_row(item):
 
 def _cell(row, index):
     return row[index] if index < len(row) else ""
+
+
+def _with_cell(row, index, value):
+    row = [*row, *[""] * (index + 1 - len(row))]
+    row[index] = value
+    return row
+
+
+def _index_of(mapping, field_name):
+    return next(index for index, name in mapping.items() if name == field_name)
+
+
+_TOTAL_STATUSES = {"DSQ", "DQ", "DNS", "NS", "DD"}
+
+
+def _total_status(value):
+    text = (value or "").strip().upper()
+    return text if text in _TOTAL_STATUSES else ""
 
 
 def _mapped(row, mapping, field_name, default=""):
