@@ -112,6 +112,8 @@ table.results th { font-size: 0.78rem; letter-spacing: 0.03em; color: var(--mute
 
 .att-empty { color: #b3ab9e; }
 
+table.results td.lift-best { text-align: center; }
+
 .messages { padding-left: 18px; }
 
 @media (max-width: 640px) {

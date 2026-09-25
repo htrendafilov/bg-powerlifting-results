@@ -1,0 +1,1 @@
+{% load archive_tags %}{% if only_best %}<td class="lift-{{ lift }} lift-best" colspan="3">{% attempt best %}</td>{% else %}{% for value in attempts %}<td class="lift-{{ lift }}">{% attempt value %}</td>{% endfor %}{% endif %}

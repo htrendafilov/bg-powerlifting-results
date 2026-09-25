@@ -1143,6 +1143,29 @@ class CompetitionLayoutTests(TestCase):
         self.assertIn("120 кг", page)
         self.assertIn('class="sex-heading"><span>Жени</span>', page)
 
+    def test_each_line_of_the_note_shows_on_its_own(self):
+        self.competition.notes = "Само най-добрите опити.\nТочките са поправени <тук>."
+        self.competition.save()
+        page = self.client.get("/competitions/layout/").content.decode()
+        self.assertIn("<p>Само най-добрите опити.<br>Точките са поправени &lt;тук&gt;.</p>", page)
+
+    def test_a_lift_known_only_by_its_best_spans_the_attempt_columns(self):
+        page = self.client.get("/competitions/layout/").content.decode()
+        self.assertInHTML(
+            '<td class="lift-bench lift-best" colspan="3"><span class="att att-good">100</span></td>', page, count=6
+        )
+
+    def test_a_lift_with_attempts_keeps_a_column_per_attempt(self):
+        result = self.competition.results.first()
+        result.bench1, result.bench2 = Decimal("90"), Decimal("-100")
+        result.save()
+        page = self.client.get("/competitions/layout/").content.decode()
+        self.assertInHTML('<td class="lift-bench"><span class="att att-miss">100</span></td>', page)
+        self.assertInHTML('<td class="lift-bench"><span class="att att-empty">–</span></td>', page)
+        self.assertInHTML(
+            '<td class="lift-bench lift-best" colspan="3"><span class="att att-good">100</span></td>', page, count=5
+        )
+
 
 class MergeAthleteTests(TestCase):
     def setUp(self):
