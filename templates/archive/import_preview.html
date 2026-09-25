@@ -10,7 +10,10 @@
       {{ parsed.skipped_sections|join:", " }}.
     </p>
   {% endif %}
-  {% if blocked %}
+  {% if scope_error %}
+    <p class="missing">{{ scope_error }}</p>
+    <p><a href="{% url 'import_meet' %}">Назад</a></p>
+  {% elif blocked %}
     <h2>Спрени редове</h2>
     <ul>
       {% for item in blocked %}
@@ -20,6 +23,9 @@
     <p>Поправи файла или избора за пол, възраст и дисциплина, после го качи отново.</p>
     <p><a href="{% url 'import_meet' %}">Назад</a></p>
   {% else %}
+    {% if replaced %}
+      <p class="missing">Ще бъдат изтрити {{ replaced }} вече въведени реда на турнира.</p>
+    {% endif %}
     <div class="table-wrap">
       <table class="results">
         <thead>

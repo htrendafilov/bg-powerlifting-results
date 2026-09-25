@@ -18,7 +18,7 @@ from archive.models import (
 from archive.models import photo_path
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
-from archive.services.commit import apply_import, athlete_for, prepare_rows
+from archive.services.commit import ReplaceScopeError, apply_import, athlete_for, prepare_rows
 from archive.services.importers import _date_in_text, _division_label, _equipment_in_text, parse_upload
 from archive.services.merge import duplicate_candidates, merge_athletes
 from archive.services.visibility import visible_athletes, visible_competitions, visible_results
@@ -255,7 +255,7 @@ class RecordTests(TestCase):
             default_sex="",
             default_equipment=Equipment.CLASSIC,
             default_event="auto",
-            replace=True,
+            replace="file",
         )
         self.assertEqual(summary["created"], 1)
         self.assertEqual(Athlete.objects.count(), 1)
@@ -266,7 +266,7 @@ class RecordTests(TestCase):
             default_sex="",
             default_equipment=Equipment.CLASSIC,
             default_event="auto",
-            replace=True,
+            replace="file",
         )
         self.assertEqual(Athlete.objects.count(), 1)
         self.assertEqual(Result.objects.count(), 1)
@@ -420,7 +420,7 @@ class ForeignLifterTests(TestCase):
         )
         apply_import(
             competition, parsed, default_sex=Sex.M, default_equipment=Equipment.CLASSIC,
-            default_event="auto", replace=True,
+            default_event="auto", replace="file",
         )
         self.assertEqual(Result.objects.count(), 3)
         holder = Record.objects.get(origin=RecordOrigin.RESULT, lift=Lift.BENCH, valid_to=None)
@@ -599,7 +599,7 @@ class ReimportAttachmentTests(TestCase):
             parsed = parse_upload("p.xlsx", buffer.getvalue())
             apply_import(
                 competition, parsed, default_sex="M", default_equipment="classic",
-                default_event="B", default_age_group="open", replace=True,
+                default_event="B", default_age_group="open", replace="file",
                 stored_file=BytesIO(buffer.getvalue()), filename="p.xlsx",
             )
         self.assertEqual(competition.files.filter(kind=FileKind.EXCEL).count(), 1)
@@ -621,10 +621,64 @@ class ReimportAttachmentTests(TestCase):
         workbook.save(buffer)
         apply_import(
             competition, parse_upload("my protocol.xlsx", buffer.getvalue()), default_sex="M",
-            default_equipment="classic", default_event="B", default_age_group="open", replace=True,
+            default_equipment="classic", default_event="B", default_age_group="open", replace="file",
             stored_file=BytesIO(buffer.getvalue()), filename="my protocol.xlsx",
         )
         self.assertEqual(competition.files.filter(kind=FileKind.EXCEL).count(), 1)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ReplaceScopeTests(TestCase):
+    """София 2026 came as three files; replacing one used to wipe all 114 rows."""
+
+    def setUp(self):
+        self.meet = Competition.objects.create(
+            name="\u0422\u0435\u0441\u0442", slug="scope-test", start_date=date(2026, 5, 30)
+        )
+
+    def _workbook(self, *names):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["PL.", "   Name", "Nation", "Weight", "1 Att.", "2 Att.", "3 Att."])
+        for place, name in enumerate(names, start=1):
+            sheet.append([str(place), name, "NSA", "82.6", "100", "110", "120"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        return buffer.getvalue()
+
+    def _import(self, filename, payload, replace="file", keep_file=True):
+        return apply_import(
+            self.meet, parse_upload(filename, payload), default_sex="M",
+            default_equipment="classic", default_event="B", default_age_group="open",
+            replace=replace, stored_file=BytesIO(payload) if keep_file else None,
+            filename=filename if keep_file else "",
+        )
+
+    def _names(self):
+        return sorted(self.meet.results.values_list("raw_name", flat=True))
+
+    def test_replacing_one_file_keeps_the_rows_of_the_others(self):
+        self._import("men.xlsx", self._workbook("Ivan Petrov", "Georgi Ivanov"))
+        self._import("women.xlsx", self._workbook("Maria Petrova"))
+        self._import("men.xlsx", self._workbook("Ivan Petrov"))
+        self.assertEqual(self._names(), ["Ivan Petrov", "Maria Petrova"])
+
+    def test_rows_of_unknown_origin_are_not_guessed_away(self):
+        self._import("old.xlsx", self._workbook("Ivan Petrov"), keep_file=False)
+        self._import("men.xlsx", self._workbook("Georgi Ivanov"), replace="keep")
+        with self.assertRaises(ReplaceScopeError):
+            self._import("women.xlsx", self._workbook("Maria Petrova"))
+        self.assertEqual(self._names(), ["Georgi Ivanov", "Ivan Petrov"])
+
+    def test_a_single_protocol_without_a_kept_copy_still_replaces_itself(self):
+        self._import("p.xlsx", self._workbook("Ivan Petrov", "Georgi Ivanov"), keep_file=False)
+        self._import("p.xlsx", self._workbook("Ivan Petrov"), keep_file=False)
+        self.assertEqual(self._names(), ["Ivan Petrov"])
+
+    def test_the_whole_meet_goes_only_when_asked(self):
+        self._import("men.xlsx", self._workbook("Ivan Petrov"))
+        self._import("women.xlsx", self._workbook("Maria Petrova"), replace="all")
+        self.assertEqual(self._names(), ["Maria Petrova"])
 
 
 class MergeSurvivesReimportTests(TestCase):
@@ -1082,7 +1136,7 @@ class BulgarianProtocolTests(TestCase):
         )
         summary = apply_import(
             competition, parsed, default_sex="", default_equipment="auto",
-            default_event="auto", replace=True,
+            default_event="auto", replace="file",
         )
         self.assertEqual(summary["created"], 96)
         self.assertEqual(len(ready), 96)

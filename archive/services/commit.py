@@ -37,6 +37,57 @@ ATTEMPT_FIELDS = [
 ]
 
 
+class ReplaceScopeError(Exception):
+    pass
+
+
+REPLACE_FILE, REPLACE_ALL, KEEP = "file", "all", "keep"
+
+
+def matching_source(competition, filename):
+    # A copy given its own title is recognised by the name it was stored under.
+    if not filename:
+        return None
+    stored = default_storage.get_valid_name(filename)
+    for item in competition.files.filter(kind=FileKind.EXCEL).exclude(file=""):
+        if item.title == filename or os.path.basename(item.file.name) == stored:
+            return item
+    return None
+
+
+def rows_to_replace(competition, source, mode, *, keeps_file):
+    """The results a re-import takes the place of.
+
+    Only the rows of the same file are replaced, so a meet published as several
+    files keeps the others. A row loaded before sources were tracked belongs to
+    no file; it is replaced only where it cannot have come from another one.
+    """
+    results = competition.results.all()
+    if mode == KEEP:
+        return results.none()
+    if mode == REPLACE_ALL:
+        return results
+    known = source is not None and source.pk is not None
+    own = results.filter(source=source) if known else results.none()
+    elsewhere = results.filter(source__isnull=False)
+    stored = competition.files.filter(kind=FileKind.EXCEL).exclude(file="")
+    if known:
+        elsewhere = elsewhere.exclude(source=source)
+        stored = stored.exclude(pk=source.pk)
+    if not keeps_file and elsewhere.exists():
+        raise ReplaceScopeError(
+            f"Турнирът има {elsewhere.count()} реда от запазени файлове. Закачи файла, "
+            "за да се знае кои редове подменя, или замени целия турнир изрично."
+        )
+    unlinked = results.filter(source__isnull=True)
+    if unlinked.exists() and (elsewhere.exists() or stored.exists()):
+        raise ReplaceScopeError(
+            f"Не е ясно от кой файл са {unlinked.count()} по-стари реда на турнира. "
+            "Замени целия турнир изрично или само добави."
+        )
+    return own | unlinked
+
+
 def apply_import(competition, parsed, *, default_sex, default_equipment, default_event, default_age_group="", reclass=False, replace, stored_file=None, filename="", title=""):
     ready, blocked = prepare_rows(
         parsed,
@@ -52,9 +103,18 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
         return {"created": 0, "athletes": 0, "blocked": blocked}
     home_country = "България" if competition.level == MeetLevel.NATIONAL else ""
 
+    keeps_file = stored_file is not None and bool(filename)
+    source = matching_source(competition, filename) if keeps_file else None
+    doomed = rows_to_replace(competition, source, replace, keeps_file=keeps_file)
     with transaction.atomic():
-        if replace:
-            competition.results.all().delete()
+        doomed.delete()
+        if keeps_file and source is None:
+            source = CompetitionFile.objects.create(
+                competition=competition,
+                kind=FileKind.EXCEL,
+                title=title or filename,
+                file=File(stored_file, name=filename),
+            )
         created_athletes = 0
         created = 0
         for item in ready:
@@ -80,31 +140,14 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
                 total=item.total,
                 points=item.points,
                 points_formula=item.points_formula or parsed.formula,
+                source=source,
             )
             for field_name in ATTEMPT_FIELDS:
                 setattr(result, field_name, item.attempts.get(field_name))
             result.save()
             created += 1
-        # Re-importing the same protocol must not attach a second copy of it,
-        # while a meet published as several files keeps all of them.
-        if stored_file is not None and filename and not _already_attached(competition, filename):
-            CompetitionFile.objects.create(
-                competition=competition,
-                kind=FileKind.EXCEL,
-                title=title or filename,
-                file=File(stored_file, name=filename),
-            )
         recalculate_records()
     return {"created": created, "athletes": created_athletes, "blocked": []}
-
-
-def _already_attached(competition, filename):
-    # A copy given its own title is recognised by the name it was stored under.
-    stored = default_storage.get_valid_name(filename)
-    return any(
-        item.title == filename or os.path.basename(item.file.name) == stored
-        for item in competition.files.filter(kind=FileKind.EXCEL)
-    )
 
 
 # IPF age divisions, used when a protocol gives the age in years but no group.

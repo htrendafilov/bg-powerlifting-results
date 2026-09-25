@@ -10,7 +10,10 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 
 from archive.models import Competition, FileKind
-from archive.services.commit import apply_import, prepare_rows
+from archive.services.commit import (
+    KEEP, REPLACE_ALL, REPLACE_FILE, ReplaceScopeError, apply_import, matching_source,
+    prepare_rows, rows_to_replace,
+)
 from archive.services.importers import parse_upload
 
 
@@ -26,7 +29,10 @@ class Command(BaseCommand):
         parser.add_argument("--age-group", default="", dest="age_group",
                             choices=["", "subjunior", "junior", "open", "m1", "m2", "m3", "m4"],
                             help="за протокол без възрастови секции")
-        parser.add_argument("--keep", action="store_true", help="добавя, вместо да замени")
+        scope = parser.add_mutually_exclusive_group()
+        scope.add_argument("--keep", action="store_true", help="добавя, вместо да замени")
+        scope.add_argument("--replace-all", action="store_true", dest="replace_all",
+                           help="трие всички редове на турнира, не само тези от същия файл")
         parser.add_argument("--reclass", action="store_true",
                             help="изчислява категориите по теглото — за протокол, "
                                  "писан по остарял набор категории")
@@ -74,6 +80,16 @@ class Command(BaseCommand):
             raise CommandError(
                 "Има спрени редове. Оправи ги или подай --skip-blocked, за да внесеш останалите."
             )
+        mode = KEEP if options["keep"] else REPLACE_ALL if options["replace_all"] else REPLACE_FILE
+        filename = Path(options["path"]).name if options["attach"] else ""
+        try:
+            doomed = rows_to_replace(
+                competition, matching_source(competition, filename), mode,
+                keeps_file=options["attach"],
+            )
+        except ReplaceScopeError as error:
+            raise CommandError(str(error))
+        self.stdout.write(f"  заменят се: {doomed.count()} от {competition.results.count()} реда")
         if options["dry_run"]:
             self.stdout.write("СУХ ПРОБЕГ, нищо не е записано.")
             return
@@ -88,10 +104,8 @@ class Command(BaseCommand):
                 self.stdout.write(f"  махнат източник OpenPowerlifting: {dropped}")
         stored = BytesIO(payload) if options["attach"] else None
         summary = apply_import(
-            competition, parsed, replace=not options["keep"],
-            stored_file=stored, filename=Path(options["path"]).name if stored else "",
-            title=options["title"],
-            **defaults
+            competition, parsed, replace=mode, stored_file=stored, filename=filename,
+            title=options["title"], **defaults
         )
         self.stdout.write(
             f"  записани: {summary['created']}   нови състезатели: {summary['athletes']}"

@@ -33,10 +33,16 @@ class ImportForm(forms.Form):
         choices=[("auto", "От файла")] + list(Event.choices),
         initial="auto",
     )
-    replace = forms.BooleanField(
-        label="Замени вече въведените редове на този турнир",
+    replace = forms.ChoiceField(
+        label="Вече въведените редове",
+        choices=[
+            ("file", "Замени само редовете от същия файл"),
+            ("keep", "Запази ги и добави новите"),
+            ("all", "Изтрий всички редове на турнира"),
+        ],
+        initial="file",
         required=False,
-        initial=True,
+        widget=forms.RadioSelect,
     )
 
     def clean(self):

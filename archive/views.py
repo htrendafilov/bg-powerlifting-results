@@ -25,7 +25,9 @@ from archive.models import (
     Result,
     Sex,
 )
-from archive.services.commit import apply_import, decimal_or_blank, prepare_rows
+from archive.services.commit import (
+    ReplaceScopeError, apply_import, decimal_or_blank, matching_source, prepare_rows, rows_to_replace,
+)
 from archive.services.importers import parse_upload
 from archive.services.visibility import (
     visible_athletes,
@@ -223,7 +225,8 @@ def import_meet(request):
                 return render(
                     request,
                     "archive/import_preview.html",
-                    {"parsed": parsed, "ready": ready, "blocked": blocked, "options": options, "kg": decimal_or_blank},
+                    {"parsed": parsed, "ready": ready, "blocked": blocked, "options": options,
+                     "kg": decimal_or_blank, **_replacement(options)},
                 )
     return render(request, "archive/import_form.html", {"form": form})
 
@@ -239,11 +242,13 @@ def import_confirm(request):
         payload = handle.read()
     parsed = parse_upload(options["filename"], payload)
     ready, blocked = prepare_rows(parsed, **_prepare_kwargs(options))
-    if blocked or not ready:
+    scope = _replacement(options)
+    if blocked or not ready or scope["scope_error"]:
         return render(
             request,
             "archive/import_preview.html",
-            {"parsed": parsed, "ready": ready, "blocked": blocked, "options": options, "kg": decimal_or_blank},
+            {"parsed": parsed, "ready": ready, "blocked": blocked, "options": options,
+             "kg": decimal_or_blank, **scope},
         )
     if not options["competition_id"] and not options["start_date"] and not parsed.meet_date:
         messages.error(request, "Файлът няма дата. Попълни я във формата.")
@@ -283,8 +288,20 @@ def _options_from_form(cleaned, path, filename, parsed):
         "default_sex": cleaned.get("default_sex") or "",
         "default_equipment": cleaned.get("default_equipment") or "auto",
         "default_event": cleaned.get("default_event") or "auto",
-        "replace": bool(cleaned.get("replace")),
+        "replace": cleaned.get("replace") or "file",
     }
+
+
+def _replacement(options):
+    if not options["competition_id"]:
+        return {"replaced": 0, "scope_error": ""}
+    competition = Competition.objects.get(pk=options["competition_id"])
+    source = matching_source(competition, options["filename"])
+    try:
+        doomed = rows_to_replace(competition, source, options["replace"], keeps_file=True)
+    except ReplaceScopeError as error:
+        return {"replaced": 0, "scope_error": str(error)}
+    return {"replaced": doomed.count(), "scope_error": ""}
 
 
 def _prepare_kwargs(options):

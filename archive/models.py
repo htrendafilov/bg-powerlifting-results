@@ -279,6 +279,11 @@ class Result(models.Model):
     points = models.DecimalField("Точки", max_digits=7, decimal_places=2, null=True, blank=True)
     points_formula = models.CharField("Формула", max_length=20, blank=True)
     review_note = models.CharField("За проверка", max_length=300, blank=True)
+    # Empty for rows loaded before sources were tracked, or from a file not kept.
+    source = models.ForeignKey(
+        CompetitionFile, verbose_name="Внесен от файл", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="results",
+    )
 
     class Meta:
         ordering = ["weight_class", "place", "id"]
