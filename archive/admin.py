@@ -1,4 +1,5 @@
 from django.contrib import admin, messages
+from django.db import transaction
 from django.db.models import Count, Max, Min
 from django.shortcuts import redirect, render
 from django.urls import path, reverse
@@ -14,6 +15,7 @@ from archive.models import (
     SiteSettings,
 )
 from archive.services.merge import duplicate_candidates, merge_athletes
+from archive.services.records import recalculate_records
 
 
 class PhotoInline(admin.TabularInline):
@@ -156,8 +158,25 @@ class AthleteAdmin(admin.ModelAdmin):
         )
 
 
+class RecalculatesRecords:
+    """Records are derived from results, so any edit that can move one has to
+    rebuild them, after the change is committed."""
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        transaction.on_commit(recalculate_records)
+
+    def delete_model(self, request, obj):
+        super().delete_model(request, obj)
+        transaction.on_commit(recalculate_records)
+
+    def delete_queryset(self, request, queryset):
+        super().delete_queryset(request, queryset)
+        transaction.on_commit(recalculate_records)
+
+
 @admin.register(Competition)
-class CompetitionAdmin(admin.ModelAdmin):
+class CompetitionAdmin(RecalculatesRecords, admin.ModelAdmin):
     list_display = ("name", "start_date", "city", "level")
     list_filter = ("level", "start_date")
     search_fields = ("name", "city")
@@ -170,7 +189,7 @@ class CompetitionAdmin(admin.ModelAdmin):
 
 
 @admin.register(Result)
-class ResultAdmin(admin.ModelAdmin):
+class ResultAdmin(RecalculatesRecords, admin.ModelAdmin):
     list_display = (
         "raw_name",
         "competition",

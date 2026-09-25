@@ -1,8 +1,13 @@
 from archive.models import AGE_RECORD_GROUPS, Event, Lift, Record, RecordOrigin, Result
 
 
+# The one note this pass writes, and so the only one it may clear; anything
+# else in review_note was typed by an editor.
+EARLIER_THAN_SEED = "По-висок от записания рекорд, но с по-ранна дата."
+
+
 def recalculate_records():
-    Result.objects.exclude(review_note="").update(review_note="")
+    Result.objects.filter(review_note=EARLIER_THAN_SEED).update(review_note="")
     Record.objects.filter(origin=RecordOrigin.RESULT).delete()
     Record.objects.filter(origin=RecordOrigin.SEED).update(valid_to=None)
 
@@ -40,8 +45,9 @@ def recalculate_records():
                 and holder.valid_from
                 and result.competition.start_date < holder.valid_from
             ):
-                result.review_note = "По-висок от записания рекорд, но с по-ранна дата."
-                result.save(update_fields=["review_note"])
+                if not result.review_note:
+                    result.review_note = EARLIER_THAN_SEED
+                    result.save(update_fields=["review_note"])
                 continue
             holder.valid_to = result.competition.start_date
             holder.save(update_fields=["valid_to"])

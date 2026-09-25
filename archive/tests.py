@@ -681,6 +681,41 @@ class ReplaceScopeTests(TestCase):
         self.assertEqual(self._names(), ["Maria Petrova"])
 
 
+class AdminRecalculationTests(TestCase):
+    """An edit in the admin left the records on the old kilograms."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+
+        self.client.force_login(User.objects.create_superuser("adm", "a@b.bg", "pw-for-tests-only"))
+        meet = Competition.objects.create(name="\u0422", slug="adm-rec", start_date=date(2024, 5, 25))
+        athlete = Athlete.objects.create(name_bg="\u0418\u0432\u0430\u043d \u041f\u0435\u0442\u0440\u043e\u0432", sex=Sex.M)
+        self.result = Result.objects.create(
+            competition=meet, athlete=athlete, raw_name=athlete.name_bg, sex=Sex.M,
+            age_group=AgeGroup.OPEN, equipment=Equipment.CLASSIC, event=Event.B,
+            weight_class="83", bodyweight=Decimal("82"), place="1", best_bench=Decimal("200"),
+        )
+        recalculate_records()
+
+    def _bench_record(self):
+        return Record.objects.get(lift=Lift.BENCH, event=Event.B, valid_to=None).value_kg
+
+    def test_a_corrected_result_moves_the_record(self):
+        from archive.admin import ResultAdmin
+        from django.contrib.admin.sites import site
+
+        self.result.best_bench = Decimal("180")
+        with self.captureOnCommitCallbacks(execute=True):
+            ResultAdmin(Result, site).save_model(None, self.result, None, True)
+        self.assertEqual(self._bench_record(), Decimal("180"))
+
+    def test_an_editors_note_survives_a_recalculation(self):
+        Result.objects.filter(pk=self.result.pk).update(review_note="\u0441\u0432\u0435\u0440\u0438 \u043b\u0435\u0433\u0430")
+        recalculate_records()
+        self.result.refresh_from_db()
+        self.assertEqual(self.result.review_note, "\u0441\u0432\u0435\u0440\u0438 \u043b\u0435\u0433\u0430")
+
+
 class MergeSurvivesReimportTests(TestCase):
     """Re-importing the protocol that used the absorbed spelling used to bring
     the duplicate straight back."""
