@@ -683,6 +683,68 @@ class ReplaceScopeTests(TestCase):
         self.assertEqual(self._names(), ["Maria Petrova"])
 
 
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ProtocolContradictionTests(TestCase):
+    """Варна 2025: two lifters placed 1st with three failed benches, and a
+    best bench of 215 whose 215 attempt is marked failed."""
+
+    def setUp(self):
+        self.meet = Competition.objects.create(name="Т", slug="varna-test", start_date=date(2025, 5, 31))
+
+    def _import(self, *rows):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["Място", "Име", "Лично тегло", "Тегл. кат.", "Лег 1", "Лег 2", "Лег 3", "Най-доб.лег"])
+        for row in rows:
+            sheet.append(row)
+        buffer = BytesIO()
+        workbook.save(buffer)
+        apply_import(
+            self.meet, parse_upload("varna.xlsx", buffer.getvalue()), default_sex="M",
+            default_equipment="equipped", default_event="B", default_age_group="open", replace="file",
+        )
+
+    def test_three_failed_attempts_leave_no_placing(self):
+        self._import(["1", "Сашо Велинов", "115.7", "120", "-230", "-230", "-230", ""])
+        self.assertEqual(self.meet.results.get().place, "DQ")
+
+    def test_a_best_marked_failed_is_flagged_and_sets_no_record(self):
+        self._import(["1", "Здравко Петров", "82.4", "83", "195", "205", "-215", "215"])
+        result = self.meet.results.get()
+        self.assertFalse(result.counts_for_records)
+        self.assertIn("лег", result.review_note)
+        self.assertFalse(Record.objects.filter(result=result).exists())
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class CorrectedProtocolTests(TestCase):
+    """A corrected protocol under the same name left the old copy for download."""
+
+    def test_the_kept_copy_follows_the_corrected_file(self):
+        meet = Competition.objects.create(name="Т", slug="corrected", start_date=date(2026, 5, 30))
+
+        def workbook(total):
+            book = openpyxl.Workbook()
+            sheet = book.active
+            sheet.append(["PL.", "   Name", "Nation", "Weight", "1 Att.", "2 Att.", "3 Att."])
+            sheet.append(["1", "Ivan Petrov", "NSA", "82.6", "100", total, "-120"])
+            buffer = BytesIO()
+            book.save(buffer)
+            return buffer.getvalue()
+
+        for payload in (workbook("105"), workbook("110")):
+            apply_import(
+                meet, parse_upload("men.xlsx", payload), default_sex="M", default_equipment="classic",
+                default_event="B", default_age_group="open", replace="file",
+                stored_file=BytesIO(payload), filename="men.xlsx",
+            )
+        kept = meet.files.get(kind=FileKind.EXCEL)
+        with kept.file.open("rb") as handle:
+            self.assertEqual(handle.read(), payload)
+        self.assertEqual(meet.results.get().best_bench, Decimal("110"))
+        self.assertEqual(meet.results.get().source, kept)
+
+
 class AdminRecalculationTests(TestCase):
     """An edit in the admin left the records on the old kilograms."""
 

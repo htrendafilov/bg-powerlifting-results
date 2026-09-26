@@ -60,6 +60,17 @@ def matching_source(competition, filename):
     return None
 
 
+def _content_changed(source, stored_file):
+    stored_file.seek(0)
+    incoming = stored_file.read()
+    stored_file.seek(0)
+    try:
+        with source.file.open("rb") as handle:
+            return handle.read() != incoming
+    except FileNotFoundError:
+        return True
+
+
 def rows_to_replace(competition, source, mode, *, keeps_file):
     """The results a re-import takes the place of.
 
@@ -120,6 +131,11 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
                 title=title or filename,
                 file=File(stored_file, name=filename),
             )
+        elif keeps_file and _content_changed(source, stored_file):
+            # A corrected protocol under the same name: the copy kept here must
+            # be the one the rows now come from.
+            source.file.delete(save=False)
+            source.file.save(filename, File(stored_file, name=filename))
         created_athletes = 0
         created = 0
         entries = {}
@@ -152,8 +168,12 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
             )
             for field_name in ATTEMPT_FIELDS:
                 setattr(result, field_name, item.attempts.get(field_name))
-            if not certain:
-                result.review_note = NAMESAKE_NOTE
+            notes = [NAMESAKE_NOTE] if not certain else []
+            contradicted = _contradicted_lifts(item)
+            if contradicted:
+                notes += [CONTRADICTION_NOTE.format(lift=_LIFT_NAMES[lift]) for lift in contradicted]
+                result.counts_for_records = False
+            result.review_note = " · ".join(notes)[:300]
             result.save()
             entries.setdefault((athlete.pk, result.event, result.equipment, result.age_group), []).append(result)
             created += 1
@@ -207,6 +227,12 @@ def prepare_rows(parsed, *, default_sex, default_equipment, default_event,
         if not item.age_group and item.age:
             item.age_group = _age_group_for(item.age)
         item.age_group = item.age_group or default_age_group
+        # A lift failed three times leaves no total and so no placing, whatever
+        # number the protocol printed beside it (Варна 2025).
+        if _bombed_out(item) and (item.place or "").strip().isdigit():
+            item.place = "DQ"
+        for lift in _contradicted_lifts(item):
+            item.warnings.append(CONTRADICTION_NOTE.format(lift=_LIFT_NAMES[lift]))
         # A lifter who does not score was never in a class; reading one off the
         # scale would file her where she did not compete.
         scoring = (item.place or "").strip().upper() not in NON_SCORING_PLACES
@@ -258,6 +284,42 @@ def _match_state(item, meet_date):
 
 
 NAMESAKE_NOTE = "Има няколко състезатели с това име — провери дали профилът е верният."
+CONTRADICTION_NOTE = (
+    "Най-добрият {lift} в протокола е отбелязан като неуспешен опит — не се брои за рекорд, "
+    "докато организаторът не каже кое е вярно."
+)
+_EVENT_LIFTS = {Event.SBD: ("squat", "bench", "deadlift"), Event.B: ("bench",),
+                Event.D: ("deadlift",), Event.PP: ("bench", "deadlift")}
+_LIFT_NAMES = {"squat": "клек", "bench": "лег", "deadlift": "тяга"}
+
+
+def _attempts(item, lift):
+    return [v for v in (item.attempts.get(f"{lift}{n}") for n in (1, 2, 3)) if v is not None]
+
+
+def _bombed_out(item):
+    for lift in _EVENT_LIFTS.get(item.event, ()):
+        attempts = _attempts(item, lift)
+        if attempts and all(value <= 0 for value in attempts):
+            return True
+    return False
+
+
+def _contradicted_lifts(item):
+    """Lifts whose stated best is not the heaviest attempt marked good.
+
+    Only where the attempts carry their own signs; a negative best is
+    OpenPowerlifting's way of saying the lift was failed, not a contradiction.
+    """
+    found = []
+    for lift in _EVENT_LIFTS.get(item.event, ()):
+        attempts = _attempts(item, lift)
+        best = getattr(item, f"best_{lift}")
+        if not attempts or best is None or best <= 0 or all(value > 0 for value in attempts):
+            continue
+        if max((value for value in attempts if value > 0), default=None) != best:
+            found.append(lift)
+    return found
 SHARED_NOTE = "Два реда от протокола в една дивизия сочат към един профил — вероятно двама души."
 
 # Calendar-year ages of the IPF divisions, the way a federation checks them.
