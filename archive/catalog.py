@@ -5,6 +5,29 @@ from datetime import date
 # The April 2020 equipped round was announced and then cancelled, so it is omitted.
 CATALOG = [
     {
+        "slug": "2019-sofia-ekip",
+        "name": "1 кръг, силов трибой с екипировка",
+        "start": date(2019, 3, 23),
+        "end": date(2019, 3, 24),
+        "city": "София",
+        "links": [],
+    },
+    {
+        "slug": "2019-varna-leg",
+        "name": "2 кръг, вдигане от лег с и без екип",
+        "start": date(2019, 6, 1),
+        "city": "Варна",
+        "links": [],
+    },
+    {
+        "slug": "2019-haskovo-classic",
+        "name": "3 кръг, класически силов трибой",
+        "start": date(2019, 9, 14),
+        "end": date(2019, 9, 15),
+        "city": "Хасково",
+        "links": [],
+    },
+    {
         "slug": "2020-dupnitsa-leg",
         "name": "2 кръг, вдигане от лег с и без екип",
         "start": date(2020, 8, 23),
