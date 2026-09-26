@@ -1158,6 +1158,52 @@ class TotalStatusTests(TestCase):
         )
 
 
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class UnlabeledSummaryTests(TestCase):
+    """Дупница 2025 leaves the place and name columns unheaded, puts the first
+    division above the headings, weighs in grams and leaves some places empty."""
+
+    def _payload(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = "жени"
+        sheet.append([None, "жени до 18г."])
+        sheet.append([None, None, "клуб", "тегло", "клек", "лег", "м.тяга", "тотал"])
+        sheet.append([None, "63кг"])
+        sheet.append([None, "Рая Андонова", "НСА", 62600, 90, 45, 110, 245])
+        sheet.append([None, "69кг"])
+        sheet.append([1, "Анна Дончева", "Стренгт Скуад", 68100, 102.5, 85, 142.5, 330])
+        sheet.append([None, "Борислава Иванова", "МНГ", 67200, 100, 0, 120, 0])
+        sheet.append([None, "жени до 23г."])
+        sheet.append([None, "76кг"])
+        sheet.append([1, "Виктория Иванова", "Марек", 71.7, 162.5, 80, 177.5, 420])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        return buffer.getvalue()
+
+    def test_the_layout_is_read(self):
+        rows = parse_upload("d.xlsx", self._payload()).rows
+        self.assertEqual(
+            [(r.raw_name, r.place, r.age_group, r.weight_class, r.bodyweight) for r in rows],
+            [
+                ("Рая Андонова", "", AgeGroup.SUBJUNIOR, "63", Decimal("62.6")),
+                ("Анна Дончева", "1", AgeGroup.SUBJUNIOR, "69", Decimal("68.1")),
+                ("Борислава Иванова", "DQ", AgeGroup.SUBJUNIOR, "69", Decimal("67.2")),
+                ("Виктория Иванова", "1", AgeGroup.JUNIOR, "76", Decimal("71.7")),
+            ],
+        )
+
+    def test_a_total_without_a_place_is_kept_but_sets_no_record(self):
+        meet = Competition.objects.create(name="Т", slug="dup25", start_date=date(2025, 12, 6))
+        apply_import(
+            meet, parse_upload("d.xlsx", self._payload()), default_sex="", default_equipment="classic",
+            default_event="auto", replace="file",
+        )
+        raya = meet.results.get(raw_name="Рая Андонова")
+        self.assertFalse(raya.counts_for_records)
+        self.assertTrue(raya.review_note)
+
+
 class BulgarianDivisionTests(TestCase):
     """The federation spells the division out and, when it says only
     "Ветерани", appends the band to the name (real file: Дупница 2022)."""

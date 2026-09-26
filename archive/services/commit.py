@@ -20,6 +20,7 @@ from archive.models import (
     NON_SCORING_PLACES,
     Result,
 )
+from archive.services.importers import UNPLACED_NOTE
 from archive.services.names import (
     athlete_name_key, is_cyrillic, normalize_name, reverse_transliterate, transliterate,
 )
@@ -169,6 +170,9 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
             for field_name in ATTEMPT_FIELDS:
                 setattr(result, field_name, item.attempts.get(field_name))
             notes = [NAMESAKE_NOTE] if not certain else []
+            if not (item.place or "").strip():
+                notes.append(UNPLACED_NOTE)
+                result.counts_for_records = False
             contradicted = _contradicted_lifts(item)
             if contradicted:
                 notes += [CONTRADICTION_NOTE.format(lift=_LIFT_NAMES[lift]) for lift in contradicted]

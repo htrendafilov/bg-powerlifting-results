@@ -104,6 +104,7 @@ _HEADER_ALIASES = {
     "тяга2риопит": "deadlift2",
     "тяга3тиопит": "deadlift3",
     "тяга": "best_deadlift",
+    "мтяга": "best_deadlift",
     "найдобрамтяга": "best_deadlift",
     "найдобмтяга": "best_deadlift",
     "найдобратяга": "best_deadlift",
@@ -187,6 +188,7 @@ class HeaderLayout:
     divisions: list = field(default_factory=list)
     places: list = field(default_factory=list)
     total_rank: int | None = None
+    place_unlabeled: bool = False
 
 
 def parse_upload(filename, payload):
@@ -285,6 +287,11 @@ def _parse_table(title, rows):
     division = ""
     sex = ""
     weight_class = ""
+    # The first division heading can sit above the column headings.
+    for row in rows[:header_index]:
+        spelled_sex, spelled_age = _bg_division(_single_label(row))
+        if spelled_age and spelled_age != AgeGroup.OPEN:
+            sex, division = spelled_sex, spelled_age
     # Goodlift sheets interleave the results with team-score and best-lifter
     # tables that also carry a rank and a name. An unrecognised single-cell
     # heading starts such a block, so rows are dropped until the next heading
@@ -313,6 +320,11 @@ def _parse_table(title, rows):
         # name. Weight-class headings like "47.0" would otherwise read as a rank.
         label = _single_label(row)
         if label:
+            # "жени до 18г." names the sex and the division in one heading.
+            spelled_sex, spelled_age = _bg_division(label)
+            if spelled_age and spelled_age != AgeGroup.OPEN:
+                sex, division, weight_class, ignoring = spelled_sex, spelled_age, "", False
+                continue
             found_sex = _sex_label(label)
             found_class = normalize_weight_class(label)
             found_division = _division_label(label)
@@ -348,7 +360,16 @@ def _parse_table(title, rows):
         status = _total_status(_mapped(row, mapping, "total"))
         if status:
             row = _with_cell(row, _index_of(mapping, "place"), status)
-        if not _is_place(_mapped(row, mapping, "place")):
+        unplaced = False
+        if layout.place_unlabeled and not _mapped(row, mapping, "place") and _mapped(row, mapping, "name"):
+            total = _decimal(_mapped(row, mapping, "total"))
+            if total and total > 0:
+                # A total with no place beside it: kept, and left for a person
+                # to say whether the lifter was in the standings.
+                unplaced = True
+            elif _mapped(row, mapping, "bodyweight"):
+                row = _with_cell(row, _index_of(mapping, "place"), "DQ")
+        if not unplaced and not _is_place(_mapped(row, mapping, "place")):
             continue
         if ignoring:
             parsed.skipped += 1
@@ -356,6 +377,8 @@ def _parse_table(title, rows):
                 parsed.skipped_sections.append(ignoring)
             continue
         item = _row_from_mapping(row, mapping, layout, kind)
+        if unplaced:
+            item.warnings.append(UNPLACED_NOTE)
         # A row that could not be read at all is reported, not dropped.
         if not item.errors and not _is_result_row(item):
             parsed.skipped += 1
@@ -436,6 +459,17 @@ def _find_header(rows):
         normalized = [_norm_header(cell) for cell in row]
         fields = {_HEADER_ALIASES.get(cell) for cell in normalized}
         if "place" not in fields:
+            # Дупница 2025 heads every column but the first two, which hold the
+            # place and the name.
+            if (
+                {"total", "bodyweight"} <= fields and "name" not in fields
+                and len(normalized) > 2 and not normalized[0] and not normalized[1]
+            ):
+                layout = _header_layout(normalized)
+                layout.places = [0]
+                layout.mapping[1] = "name"
+                layout.place_unlabeled = True
+                return index, layout
             continue
         layout = _header_layout(normalized)
         if "name" in fields:
@@ -619,7 +653,7 @@ def _row_from_mapping(row, mapping, layout, kind):
         equipment_source="row" if row_equipment else "",
         event=_event_code(_mapped(row, mapping, "event")),
         weight_class=normalize_weight_class(_mapped(row, mapping, "weight_class")),
-        bodyweight=_decimal(_mapped(row, mapping, "bodyweight")),
+        bodyweight=_kilograms(_decimal(_mapped(row, mapping, "bodyweight"))),
         age=_decimal(_mapped(row, mapping, "age")),
         birth_year=_birth_year(_mapped(row, mapping, "birth_date")),
         club=_mapped(row, mapping, "club") or _extra_club(row, mapping),
@@ -1010,6 +1044,16 @@ def _date_in_text(value):
         except ValueError:
             return None
     return None
+
+
+UNPLACED_NOTE = "Протоколът не дава място — провери дали състезателят е в класирането."
+
+
+def _kilograms(value):
+    # Дупница 2025 writes the weigh-in in grams (62600), all but one row.
+    if value is not None and value > 400:
+        return value / 1000
+    return value
 
 
 def _birth_year(value):
