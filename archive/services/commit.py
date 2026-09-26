@@ -1,4 +1,7 @@
 import os
+import re
+from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 from django.core.files.base import File
@@ -17,7 +20,9 @@ from archive.models import (
     NON_SCORING_PLACES,
     Result,
 )
-from archive.services.names import athlete_name_key, is_cyrillic, normalize_name, transliterate
+from archive.services.names import (
+    athlete_name_key, is_cyrillic, normalize_name, reverse_transliterate, transliterate,
+)
 from archive.services.records import recalculate_records
 from archive.services.weight_classes import class_fits, sex_for_class, weight_class_for
 
@@ -117,8 +122,11 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
             )
         created_athletes = 0
         created = 0
+        entries = {}
         for item in ready:
-            athlete, was_created = _athlete_for(item)
+            athlete, was_created, certain = find_athlete(
+                item.raw_name, item.sex, _hints(item, competition.start_date)
+            )
             created_athletes += int(was_created)
             result = Result(
                 competition=competition,
@@ -144,8 +152,15 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
             )
             for field_name in ATTEMPT_FIELDS:
                 setattr(result, field_name, item.attempts.get(field_name))
+            if not certain:
+                result.review_note = NAMESAKE_NOTE
             result.save()
+            entries.setdefault((athlete.pk, result.event, result.equipment, result.age_group), []).append(result)
             created += 1
+        # Two rows of one division on one profile are two people with one name.
+        for rows in entries.values():
+            if len(rows) > 1:
+                Result.objects.filter(pk__in=[r.pk for r in rows], review_note="").update(review_note=SHARED_NOTE)
         recalculate_records()
     return {"created": created, "athletes": created_athletes, "blocked": []}
 
@@ -220,9 +235,9 @@ def prepare_rows(parsed, *, default_sex, default_equipment, default_event,
             problems.append("Няма категория.")
         if meet_level == MeetLevel.INTERNATIONAL and not item.country:
             problems.append("Няма държава. На международен турнир тя не се подразбира.")
-        match = _match_state(item) if item.raw_name and item.sex else None
+        match = _match_state(item, meet_date) if item.raw_name and item.sex else None
         if match == "ambiguous":
-            problems.append("Има повече от един състезател с това име.")
+            item.warnings.append(NAMESAKE_NOTE)
         if problems:
             blocked.append({"row": index, "name": item.raw_name, "problems": problems})
             continue
@@ -231,36 +246,99 @@ def prepare_rows(parsed, *, default_sex, default_equipment, default_event,
     return ready, blocked
 
 
-def _match_state(item):
+def _match_state(item, meet_date):
     key = athlete_name_key(item.raw_name if is_cyrillic(item.raw_name) else "", item.raw_name)
-    count = Athlete.objects.filter(sex=item.sex, name_key=key).count()
-    if count > 1:
-        return "ambiguous"
-    if count == 1:
+    namesakes = list(Athlete.objects.filter(sex=item.sex, name_key=key).order_by("pk"))
+    if len(namesakes) > 1:
+        _, certain = _pick_namesake(namesakes, _hints(item, meet_date))
+        return "existing" if certain else "ambiguous"
+    if namesakes:
         return "existing"
     return "new"
 
 
-def _athlete_for(item):
-    return athlete_for(item.raw_name, item.sex)
+NAMESAKE_NOTE = "Има няколко състезатели с това име — провери дали профилът е верният."
+SHARED_NOTE = "Два реда от протокола в една дивизия сочат към един профил — вероятно двама души."
+
+# Calendar-year ages of the IPF divisions, the way a federation checks them.
+DIVISION_AGES = {AgeGroup.SUBJUNIOR: (14, 18), AgeGroup.JUNIOR: (19, 23), AgeGroup.M1: (40, 49),
+                 AgeGroup.M2: (50, 59), AgeGroup.M3: (60, 69), AgeGroup.M4: (70, 150)}
 
 
-def athlete_for(raw_name, sex):
+@dataclass
+class Hints:
+    """What a row says about who the lifter is, beyond the name."""
+
+    meet_date: date | None = None
+    ages: tuple | None = None
+    club: str = ""
+    birth_year: int | None = None
+
+
+def _hints(item, meet_date):
+    return Hints(meet_date=meet_date, ages=DIVISION_AGES.get(item.age_group), club=item.club,
+                 birth_year=item.birth_year)
+
+
+def athlete_for(raw_name, sex, hints=None):
+    athlete, created, _ = find_athlete(raw_name, sex, hints)
+    return athlete, created
+
+
+def find_athlete(raw_name, sex, hints=None):
+    """The athlete a row belongs to, whether it was created, and whether the
+    choice is certain — it is not when namesakes cannot be told apart."""
+    hints = hints or Hints()
     raw_name = normalize_name(raw_name)
     key = athlete_name_key(raw_name if is_cyrillic(raw_name) else "", raw_name)
-    existing = list(Athlete.objects.filter(sex=sex, name_key=key)[:1])
-    if existing:
-        return existing[0], False
+    namesakes = list(Athlete.objects.filter(sex=sex, name_key=key).order_by("pk"))
+    if len(namesakes) == 1:
+        return namesakes[0], False, True
+    if namesakes:
+        athlete, certain = _pick_namesake(namesakes, hints)
+        return athlete, False, certain
     # A spelling that was merged away must not come back as a new athlete.
     alias = AthleteAlias.objects.filter(sex=sex, name_key=key).select_related("athlete").first()
     if alias:
-        return alias.athlete, False
+        return alias.athlete, False, True
     if is_cyrillic(raw_name):
         athlete = Athlete(name_bg=raw_name, name_lat=transliterate(raw_name), sex=sex)
     else:
         athlete = Athlete(name_lat=raw_name, sex=sex)
+    athlete.birth_year = hints.birth_year
     athlete.save()
-    return athlete, True
+    return athlete, True, True
+
+
+def _pick_namesake(namesakes, hints):
+    if hints.birth_year:
+        born = [a for a in namesakes if a.birth_year == hints.birth_year]
+        if len(born) == 1:
+            return born[0], True
+    possible = namesakes
+    if hints.ages and hints.meet_date:
+        low, high = hints.ages
+        possible = [
+            a for a in namesakes
+            if a.birth_year is None or low <= hints.meet_date.year - a.birth_year <= high
+        ] or namesakes
+        if len(possible) == 1:
+            return possible[0], True
+    club = _club_key(hints.club)
+    if club:
+        same_club = [a for a in possible if club in _clubs_of(a)]
+        if len(same_club) == 1:
+            return same_club[0], True
+    return possible[0], False
+
+
+def _club_key(text):
+    # "NSA", "Нса" and "НСА;" are one club; protocols switch alphabets.
+    return re.sub(r"[^0-9а-я]", "", reverse_transliterate(text or "").lower())
+
+
+def _clubs_of(athlete):
+    return {_club_key(club) for club in athlete.results.values_list("club", flat=True)} - {""}
 
 
 def decimal_or_blank(value):

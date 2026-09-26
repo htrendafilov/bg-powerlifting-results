@@ -7,6 +7,7 @@ scraping a results site.
 """
 
 import csv
+import re
 from datetime import date
 
 from django.core.management.base import BaseCommand, CommandError
@@ -25,7 +26,7 @@ from archive.models import (
     Sex,
     unique_slug,
 )
-from archive.services.commit import athlete_for
+from archive.services.commit import Hints, athlete_for
 from archive.services.importers import _division_label
 from archive.services.names import transliterate
 from archive.services.records import recalculate_records
@@ -108,7 +109,7 @@ class Command(BaseCommand):
                     if problem:
                         skipped.append(f"{row['Name']} @ {row['MeetName']}: {problem}")
                         continue
-                    athlete, is_new = athlete_for(row["Name"], row["Sex"])
+                    athlete, is_new = athlete_for(row["Name"], row["Sex"], _hints(row))
                     created_athletes += int(is_new)
                     self._result(competition, athlete, row)
                     created_rows += 1
@@ -232,3 +233,13 @@ class Command(BaseCommand):
         for field_name, column in ATTEMPTS:
             setattr(result, field_name, number(column))
         result.save()
+
+
+def _hints(row):
+    # OpenPowerlifting's BirthYearClass is the calendar-year age band, which is
+    # what tells namesakes of different generations apart.
+    band = re.fullmatch(r"(\d+)-(\d+)", row.get("BirthYearClass") or "")
+    return Hints(
+        meet_date=date.fromisoformat(row["Date"]),
+        ages=(int(band.group(1)), int(band.group(2))) if band else None,
+    )

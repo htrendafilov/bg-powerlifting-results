@@ -92,6 +92,9 @@ def duplicate_candidates(threshold=0.86, limit=200):
                     continue
                 seen.add((left, right))
                 one, two = by_pk[left], by_pk[right]
+                # Namesakes already told apart by birth year are not a duplicate.
+                if one.birth_year and two.birth_year and one.birth_year != two.birth_year:
+                    continue
                 score = _similarity(one, two)
                 if score >= threshold:
                     pairs.append((score, one, two))

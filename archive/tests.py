@@ -18,7 +18,9 @@ from archive.models import (
 from archive.models import photo_path
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
-from archive.services.commit import ReplaceScopeError, apply_import, athlete_for, prepare_rows
+from archive.services.commit import (
+    SHARED_NOTE, Hints, ReplaceScopeError, apply_import, athlete_for, find_athlete, prepare_rows,
+)
 from archive.services.importers import _date_in_text, _division_label, _equipment_in_text, parse_upload
 from archive.services.merge import duplicate_candidates, merge_athletes
 from archive.services.visibility import visible_athletes, visible_competitions, visible_results
@@ -714,6 +716,71 @@ class AdminRecalculationTests(TestCase):
         recalculate_records()
         self.result.refresh_from_db()
         self.assertEqual(self.result.review_note, "\u0441\u0432\u0435\u0440\u0438 \u043b\u0435\u0433\u0430")
+
+
+class NamesakeTests(TestCase):
+    """Three lifters called Мартин Димитров, born 2010, 2006 and 2005; a
+    re-import put every start back on the first of them."""
+
+    def setUp(self):
+        self.young = Athlete.objects.create(name_bg="Мартин Димитров", sex=Sex.M, birth_year=2010)
+        self.middle = Athlete.objects.create(name_bg="Мартин Димитров", sex=Sex.M, birth_year=2006)
+        self.older = Athlete.objects.create(name_bg="Мартин Димитров", sex=Sex.M, birth_year=2005)
+        meet = Competition.objects.create(name="Т", slug="namesakes", start_date=date(2024, 11, 16))
+        Result.objects.create(
+            competition=meet, athlete=self.middle, raw_name="Мартин Димитров", sex=Sex.M,
+            age_group=AgeGroup.SUBJUNIOR, equipment=Equipment.CLASSIC, event=Event.SBD,
+            weight_class="83", place="4", club="НСА",
+        )
+
+    def _find(self, **hints):
+        athlete, _, certain = find_athlete("Мартин Димитров", Sex.M, Hints(**hints))
+        return athlete, certain
+
+    def test_a_stated_birth_year_decides(self):
+        self.assertEqual(self._find(birth_year=2005), (self.older, True))
+
+    def test_the_division_rules_out_the_other_generations(self):
+        self.assertEqual(self._find(meet_date=date(2026, 4, 3), ages=(14, 18)), (self.young, True))
+
+    def test_the_club_breaks_a_tie_across_alphabets(self):
+        found = self._find(meet_date=date(2025, 4, 11), ages=(19, 23), club="NSA")
+        self.assertEqual(found, (self.middle, True))
+
+    def test_what_cannot_be_told_apart_is_flagged(self):
+        self.assertEqual(self._find(meet_date=date(2025, 4, 11), ages=(19, 23))[1], False)
+
+    def test_namesakes_of_different_years_are_not_offered_as_duplicates(self):
+        self.assertEqual(duplicate_candidates(), [])
+
+    def test_a_goodlift_birth_date_gives_the_year(self):
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["PL.", "Name", "B.Date", "Nation", "Weight", "1 Att.", "2 Att.", "3 Att.", "RESULT"])
+        sheet.append(["3", "Dimitrov Martin", "01.01.05", "NSA", "115", "152.5", "162.5", "167.5", "162.5"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        self.assertEqual(parse_upload("m.xlsx", buffer.getvalue()).rows[0].birth_year, 2005)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class SharedProfileTests(TestCase):
+    """Two rows of one division landing on one profile are two people."""
+
+    def test_both_rows_are_flagged(self):
+        meet = Competition.objects.create(name="Т", slug="shared", start_date=date(2024, 11, 16))
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["PL.", "   Name", "Nation", "Weight", "1 Att.", "2 Att.", "3 Att."])
+        sheet.append(["4", "Ivan Petrov", "NSA", "81.4", "100", "110", "120"])
+        sheet.append(["8", "Ivan Petrov", "MNG", "79.5", "90", "95", "100"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        apply_import(
+            meet, parse_upload("p.xlsx", buffer.getvalue()), default_sex="M",
+            default_equipment="classic", default_event="B", default_age_group="subjunior", replace="file",
+        )
+        self.assertEqual(set(meet.results.values_list("review_note", flat=True)), {SHARED_NOTE})
 
 
 class MergeSurvivesReimportTests(TestCase):

@@ -49,6 +49,11 @@ _HEADER_ALIASES = {
     "weight": "bodyweight",
     "lot": "lot",
     "nation": "nation",
+    "bdate": "birth_date",
+    "birthdate": "birth_date",
+    "роден": "birth_date",
+    "датанараждане": "birth_date",
+    "годинанараждане": "birth_date",
     # Bulgarian protocols. The federation's spelling drifts between meets, so
     # every variant seen in the published files is listed rather than guessed.
     "място": "place",
@@ -126,6 +131,7 @@ class ParsedRow:
     weight_class: str = ""
     bodyweight: Decimal | None = None
     age: Decimal | None = None
+    birth_year: int | None = None
     club: str = ""
     nation_raw: str = ""
     lot: str = ""
@@ -615,6 +621,7 @@ def _row_from_mapping(row, mapping, layout, kind):
         weight_class=normalize_weight_class(_mapped(row, mapping, "weight_class")),
         bodyweight=_decimal(_mapped(row, mapping, "bodyweight")),
         age=_decimal(_mapped(row, mapping, "age")),
+        birth_year=_birth_year(_mapped(row, mapping, "birth_date")),
         club=_mapped(row, mapping, "club") or _extra_club(row, mapping),
         nation_raw=_mapped(row, mapping, "nation"),
         lot=_mapped(row, mapping, "lot"),
@@ -1003,6 +1010,20 @@ def _date_in_text(value):
         except ValueError:
             return None
     return None
+
+
+def _birth_year(value):
+    # Goodlift v2 writes "01.01.05": only the year is real, the day and month
+    # are filler. A bare "BY" column is not read here; in the 2013 sheets it
+    # held the meet year.
+    text = (value or "").strip()
+    match = re.fullmatch(r"(?:\d{1,2}[./-]){2}(\d{2}|\d{4})", text) or re.fullmatch(r"((?:19|20)\d{2})", text)
+    if not match:
+        return None
+    year = int(match.group(1))
+    if year < 100:
+        year += 2000 if 2000 + year <= date.today().year else 1900
+    return year if 1900 <= year <= date.today().year - 10 else None
 
 
 def _parse_date(value):
