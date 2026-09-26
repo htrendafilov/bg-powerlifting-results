@@ -809,6 +809,14 @@ class NamesakeTests(TestCase):
         found = self._find(meet_date=date(2025, 4, 11), ages=(19, 23), club="NSA")
         self.assertEqual(found, (self.middle, True))
 
+    def test_a_youngster_lifting_up_a_division_is_still_found_by_club(self):
+        found = self._find(meet_date=date(2024, 11, 16), ages=(19, 23), club="НСА")
+        self.assertEqual(found, (self.middle, True))
+
+    def test_the_full_band_is_the_likelier_fit_when_nothing_else_decides(self):
+        athlete, certain = self._find(meet_date=date(2025, 4, 11), ages=(19, 23))
+        self.assertEqual((athlete, certain), (self.middle, False))
+
     def test_what_cannot_be_told_apart_is_flagged(self):
         self.assertEqual(self._find(meet_date=date(2025, 4, 11), ages=(19, 23))[1], False)
 

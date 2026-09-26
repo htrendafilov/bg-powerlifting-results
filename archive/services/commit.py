@@ -381,21 +381,34 @@ def _pick_namesake(namesakes, hints):
         born = [a for a in namesakes if a.birth_year == hints.birth_year]
         if len(born) == 1:
             return born[0], True
-    possible = namesakes
+    possible, in_band = namesakes, []
     if hints.ages and hints.meet_date:
         low, high = hints.ages
-        possible = [
-            a for a in namesakes
-            if a.birth_year is None or low <= hints.meet_date.year - a.birth_year <= high
-        ] or namesakes
+        # A youngster may lift up a division and a master down into open, so
+        # the division only bounds the age on one side; the full band is merely
+        # the likelier fit (a 17-year-old in "до 23" at Дупница 2021).
+        youth = high < 40
+
+        def allowed(athlete):
+            age = hints.meet_date.year - athlete.birth_year
+            return age <= high if youth else age >= low
+
+        possible = [a for a in namesakes if a.birth_year is None or allowed(a)] or namesakes
         if len(possible) == 1:
             return possible[0], True
+        in_band = [
+            a for a in possible
+            if a.birth_year and low <= hints.meet_date.year - a.birth_year <= high
+        ]
     club = _club_key(hints.club)
     if club:
         same_club = [a for a in possible if club in _clubs_of(a)]
         if len(same_club) == 1:
             return same_club[0], True
-    return possible[0], False
+    # Nothing decides: someone of unknown age is likelier than someone known
+    # to sit outside the division's band.
+    unknown_age = [a for a in possible if a.birth_year is None]
+    return (in_band or unknown_age or possible)[0], False
 
 
 def _club_key(text):
