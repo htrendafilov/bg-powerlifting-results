@@ -87,6 +87,9 @@ _FOLD = [
     ("shtch", "sht"), ("tch", "ch"), ("kh", "h"), ("tz", "ts"), ("cz", "ts"),
     ("ph", "f"), ("ck", "k"), ("qu", "kv"), ("x", "ks"), ("w", "v"), ("tc", "ch"),
     ("cv", "tsv"),
+    # The federation writes "ц" as "c": Vencislav, Toceva, Picin. Before a/o/u
+    # the letter stays "к", where English spellings (Nicole) keep it.
+    ("ce", "tse"), ("ci", "tsi"),
 ]
 
 # Endings the Russian and older Latin spellings use for Bulgarian names.
@@ -142,6 +145,15 @@ def fold_latin(text):
     for pattern, replacement in _ENDINGS:
         lowered = re.sub(pattern, replacement, lowered)
     return lowered
+
+
+_SURNAME_ENDING = re.compile(r"(ов|ова|ев|ева|ски|ска|цки|цка)$")
+
+
+def looks_like_surname(word):
+    # Bulgarian surnames end so and given names almost never do; the length
+    # keeps a short given name such as Лев out of it.
+    return len(word) >= 5 and bool(_SURNAME_ENDING.search(word))
 
 
 def reverse_transliterate(text):

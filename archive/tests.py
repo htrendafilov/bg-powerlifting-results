@@ -4,7 +4,7 @@ from collections import Counter
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 
 import openpyxl
@@ -778,6 +778,22 @@ class AdminRecalculationTests(TestCase):
         recalculate_records()
         self.result.refresh_from_db()
         self.assertEqual(self.result.review_note, "\u0441\u0432\u0435\u0440\u0438 \u043b\u0435\u0433\u0430")
+
+
+class BulgarizeNamesTests(TestCase):
+    """Federation protocols write "Diulgerov Ivan" and "c" for "ц"."""
+
+    def test_the_federations_c_before_e_and_i_is_ts(self):
+        self.assertEqual(reverse_transliterate("Vencislav"), "Венцислав")
+        self.assertEqual(reverse_transliterate("Toceva"), "Тоцева")
+
+    def test_a_surname_first_name_is_turned_round_in_both_alphabets(self):
+        athlete = Athlete.objects.create(name_lat="Diulgerov Ivan", sex=Sex.M)
+        key = athlete.name_key
+        call_command("bulgarize_names", stdout=StringIO())
+        athlete.refresh_from_db()
+        self.assertEqual((athlete.name_bg, athlete.name_lat), ("Иван Диулгеров", "Ivan Diulgerov"))
+        self.assertEqual(athlete.name_key, key)
 
 
 class NamesakeTests(TestCase):

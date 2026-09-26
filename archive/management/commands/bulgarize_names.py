@@ -13,7 +13,7 @@ from collections import Counter
 from django.core.management.base import BaseCommand
 
 from archive.models import Athlete
-from archive.services.names import fold_latin, reverse_transliterate, transliterate
+from archive.services.names import fold_latin, looks_like_surname, reverse_transliterate, transliterate
 
 
 class Command(BaseCommand):
@@ -44,6 +44,12 @@ class Command(BaseCommand):
                     used_vocab = True
                 else:
                     parts.append(reverse_transliterate(word) + marker)
+            latin = athlete.name_lat
+            # Federation protocols write the surname first; the site puts the
+            # given name first, in both alphabets.
+            if len(parts) == 2 and looks_like_surname(parts[0]) and not looks_like_surname(parts[1]):
+                parts.reverse()
+                latin = " ".join(reversed(athlete.name_lat.split()))
             name = " ".join(parts)
             from_vocab += int(used_vocab)
             by_rule += int(not used_vocab)
@@ -51,6 +57,7 @@ class Command(BaseCommand):
                 samples.append(f"{athlete.name_lat}  ->  {name}")
             if not options["dry_run"]:
                 athlete.name_bg = name
+                athlete.name_lat = latin
                 athlete.name_bg_auto = True
                 athlete.save()
 
