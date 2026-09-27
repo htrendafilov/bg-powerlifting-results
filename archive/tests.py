@@ -787,6 +787,11 @@ class BulgarizeNamesTests(TestCase):
         self.assertEqual(reverse_transliterate("Vencislav"), "Венцислав")
         self.assertEqual(reverse_transliterate("Toceva"), "Тоцева")
 
+    def test_a_y_between_consonants_is_the_hard_sign(self):
+        self.assertEqual(reverse_transliterate("Gybov"), "Гъбов")
+        self.assertEqual(reverse_transliterate("Pyrvanov"), "Първанов")
+        self.assertEqual(reverse_transliterate("Mityo"), "Митьо")
+
     def test_a_surname_first_name_is_turned_round_in_both_alphabets(self):
         athlete = Athlete.objects.create(name_lat="Diulgerov Ivan", sex=Sex.M)
         key = athlete.name_key
@@ -832,6 +837,10 @@ class NamesakeTests(TestCase):
     def test_the_full_band_is_the_likelier_fit_when_nothing_else_decides(self):
         athlete, certain = self._find(meet_date=date(2025, 4, 11), ages=(19, 23))
         self.assertEqual((athlete, certain), (self.middle, False))
+
+    def test_no_club_tells_namesakes_nothing(self):
+        Result.objects.filter(athlete=self.middle).update(club="IND")
+        self.assertEqual(self._find(meet_date=date(2024, 11, 16), ages=(19, 23), club="IND")[1], False)
 
     def test_what_cannot_be_told_apart_is_flagged(self):
         self.assertEqual(self._find(meet_date=date(2025, 4, 11), ages=(19, 23))[1], False)

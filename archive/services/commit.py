@@ -430,9 +430,14 @@ def _pick_namesake(namesakes, hints):
     return (in_band or unknown_age or possible)[0], False
 
 
+_NO_CLUB = {"инд", "инд.", "независим", "няма"}
+
+
 def _club_key(text):
-    # "NSA", "Нса" and "НСА;" are one club; protocols switch alphabets.
-    return re.sub(r"[^0-9а-я]", "", reverse_transliterate(text or "").lower())
+    # "NSA", "Нса" and "НСА;" are one club; protocols switch alphabets. IND
+    # means no club, so it tells namesakes nothing.
+    key = re.sub(r"[^0-9а-я]", "", reverse_transliterate(text or "").lower())
+    return "" if key in _NO_CLUB else key
 
 
 def _clubs_of(athlete):

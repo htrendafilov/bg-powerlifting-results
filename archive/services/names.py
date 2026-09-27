@@ -106,6 +106,7 @@ _ENDINGS = [
     (r"(?<=[bcdfghjklmnpqrstvwxz])y(?=[bcdfghjklmnpqrstvwxz])", "a"),
 ]
 _PAIRS = [
+    ("@", "ъ"), ("%", "ьо"),
     ("sht", "щ"), ("zh", "ж"), ("ch", "ч"), ("sh", "ш"), ("ts", "ц"),
     ("yu", "ю"), ("ya", "я"),
     ("a", "а"), ("b", "б"), ("v", "в"), ("g", "г"), ("d", "д"), ("e", "е"),
@@ -173,6 +174,12 @@ def _word(word):
     known = _WORDS.get(lowered)
     if known:
         return known
+    # Folding reads a "y" between consonants as the standard "a" for "ъ",
+    # which would come back as "а": Gybov is Гъбов, not Габов. "yo" after a
+    # consonant is "ьо" (Mityo).
+    marked = re.sub(r"(?<=[bcdfghjklmnpqrstvwxz])yo", "%", cleaned.lower())
+    marked = re.sub(r"(?<=[bcdfghjklmnpqrstvwxz])y(?=[bcdfghjklmnpqrstvwxz])", "@", marked)
+    lowered = fold_latin(marked)
     out = []
     index = 0
     while index < len(lowered):
