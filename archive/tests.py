@@ -1056,6 +1056,11 @@ class StatedClassTests(TestCase):
     def test_an_impossible_class_gives_way_to_the_weigh_in(self):
         self.assertEqual(self._rows("70", "72.7")[0].weight_class, "76")
 
+    def test_a_weigh_in_over_a_real_class_keeps_the_protocols_class_with_a_note(self):
+        row = self._rows("63", "64.3")[0]
+        self.assertEqual(row.weight_class, "63")
+        self.assertIn("над лимита", " ".join(row.warnings))
+
     def test_a_class_that_fits_is_left_alone(self):
         self.assertEqual(self._rows("84", "80.1")[0].weight_class, "84")
 
@@ -1066,6 +1071,26 @@ class StatedClassTests(TestCase):
     def test_reclass_reads_every_class_off_the_scale(self):
         self.assertEqual(self._rows("84", "80.1", reclass=True)[0].weight_class, "84")
         self.assertEqual(self._rows("72", "68.2", reclass=True)[0].weight_class, "69")
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class OverLimitImportTests(TestCase):
+    """Варна 2019 ranks Биляна Богданова, 64.30 kg, in class 63."""
+
+    def test_the_row_keeps_its_class_but_sets_no_record(self):
+        meet = Competition.objects.create(name="Т", slug="over-limit", start_date=date(2019, 6, 1))
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.append(["Place", "Name", "Sex", "WeightClassKg", "BodyweightKg", "Best3BenchKg", "TotalKg"])
+        sheet.append(["1", "Bogdanova Bilyana", "F", "63", "64.3", "60", "60"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        apply_import(meet, parse_upload("v.xlsx", buffer.getvalue()), default_sex="", default_equipment="classic",
+                     default_event="B", default_age_group="junior", replace="file")
+        row = meet.results.get()
+        self.assertEqual((row.weight_class, row.bodyweight, row.counts_for_records), ("63", Decimal("64.30"), False))
+        self.assertIn("над лимита", row.review_note)
+        self.assertFalse(Record.objects.filter(result=row).exists())
 
 
 class FailedAttemptTests(TestCase):

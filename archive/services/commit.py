@@ -25,7 +25,7 @@ from archive.services.names import (
     athlete_name_key, is_cyrillic, normalize_name, reverse_transliterate, transliterate,
 )
 from archive.services.records import recalculate_records
-from archive.services.weight_classes import class_fits, sex_for_class, weight_class_for
+from archive.services.weight_classes import class_fits, classes_of, era_for, sex_for_class, weight_class_for
 
 ATTEMPT_FIELDS = [
     "squat1",
@@ -173,6 +173,9 @@ def apply_import(competition, parsed, *, default_sex, default_equipment, default
             if not (item.place or "").strip():
                 notes.append(UNPLACED_NOTE)
                 result.counts_for_records = False
+            if _over_limit(item, competition.start_date):
+                notes.append(_over_limit_note(item))
+                result.counts_for_records = False
             contradicted = _contradicted_lifts(item)
             if contradicted:
                 notes += [CONTRADICTION_NOTE.format(lift=_LIFT_NAMES[lift]) for lift in contradicted]
@@ -242,12 +245,16 @@ def prepare_rows(parsed, *, default_sex, default_equipment, default_event,
         scoring = (item.place or "").strip().upper() not in NON_SCORING_PLACES
         if reclass and item.bodyweight and scoring:
             item.weight_class = ""
-        # A class the year did not contest, or one lighter than the weigh-in,
-        # cannot be what the lifter competed in; the bodyweight decides instead.
+        # A class the year did not contest cannot be what the lifter competed
+        # in, so the bodyweight decides. A real class with a weigh-in over its
+        # limit is kept as the protocol ranked it, with a note and no records.
         if item.weight_class and meet_date and scoring and not class_fits(
             item.sex, item.weight_class, item.bodyweight, meet_date
         ):
-            item.weight_class = ""
+            if _over_limit(item, meet_date):
+                item.warnings.append(_over_limit_note(item))
+            else:
+                item.weight_class = ""
         if not item.weight_class and item.bodyweight and meet_date and scoring:
             item.weight_class = weight_class_for(
                 item.sex, item.bodyweight, meet_date, item.age_group
@@ -295,6 +302,18 @@ CONTRADICTION_NOTE = (
 _EVENT_LIFTS = {Event.SBD: ("squat", "bench", "deadlift"), Event.B: ("bench",),
                 Event.D: ("deadlift",), Event.PP: ("bench", "deadlift")}
 _LIFT_NAMES = {"squat": "клек", "bench": "лег", "deadlift": "тяга"}
+
+
+def _over_limit(item, meet_date):
+    if not (item.weight_class and item.bodyweight and meet_date) or item.weight_class.endswith("+"):
+        return False
+    return (item.weight_class in classes_of(item.sex, era_for(meet_date))
+            and item.bodyweight > Decimal(item.weight_class))
+
+
+def _over_limit_note(item):
+    return (f"Тегло {decimal_or_blank(item.bodyweight)} кг е над лимита на категория {item.weight_class} кг — "
+            "оставено както е в протокола; не се брои за рекорд.")
 
 
 def _attempts(item, lift):
