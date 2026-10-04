@@ -1794,6 +1794,11 @@ class CompetitionLevelFilterTests(TestCase):
         page = self.client.get("/competitions/?level=international")
         self.assertContains(page, 'value="international" selected')
 
+    def test_choosing_a_level_submits_the_form_itself(self):
+        page = self.client.get("/competitions/")
+        self.assertContains(page, 'onchange="this.form.submit()"')
+        self.assertNotContains(page, "Покажи")
+
 
 class MergeNamePreferenceTests(TestCase):
     def test_a_name_from_a_protocol_beats_a_converted_one(self):
