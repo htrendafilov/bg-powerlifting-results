@@ -340,6 +340,39 @@ CATALOG = [
         ],
     },
     {
+        "slug": "2017-haskovo-krag-3",
+        "name": "3 кръг, класически силов трибой",
+        "start": date(2017, 9, 9),
+        "end": date(2017, 9, 10),
+        "city": "Хасково",
+        "links": [
+            (
+                "Мъже – всички възрасти",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2017/09/DLOSH-3-2017-Klasirane-Maje-wsichki-vuzrasti.pdf",
+            ),
+            (
+                "Жени – всички възрасти",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2017/09/DLOSH-3-2017-Klasirane-Jeni-wsichki-vuzrasti.pdf",
+            ),
+            (
+                "Юноши",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2017/09/DLOSH-3-2017-Klasirane-Maje-Unushi.pdf",
+            ),
+            (
+                "Младежи",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2017/09/DLOSH-3-2017-Klasirane-Maje-Mladeji.pdf",
+            ),
+            (
+                "Ветерани",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2017/09/DLOSH-3-2017-Klasirane-Maje-Veterani.pdf",
+            ),
+            (
+                "Жени по възраст",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2017/09/DLOSH-3-2017-Klasirane-Jeni-spored-vuzrastta.pdf",
+            ),
+        ],
+    },
+    {
         "slug": "2018-sofia-ekip",
         "name": "1 кръг, силов трибой с екипировка",
         "start": date(2018, 3, 31),
