@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.db.models import Count, Q
+from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -29,6 +29,7 @@ from archive.services.commit import (
     ReplaceScopeError, apply_import, decimal_or_blank, matching_source, prepare_rows, rows_to_replace,
 )
 from archive.services.importers import parse_upload
+from archive.search import match_athlete_name
 from archive.services.visibility import (
     visible_athletes,
     visible_competitions,
@@ -188,7 +189,7 @@ def athlete_list(request):
     query = request.GET.get("q", "").strip()
     athletes = visible_athletes(Athlete.objects.all())
     if query:
-        athletes = athletes.filter(Q(name_bg__icontains=query) | Q(name_lat__icontains=query))
+        athletes = match_athlete_name(athletes, query)
     return render(request, "archive/athlete_list.html", {"athletes": athletes[:200], "query": query})
 
 

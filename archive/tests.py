@@ -486,6 +486,21 @@ class UrlTests(TestCase):
         self.assertEqual(response["Location"], "/records/?sex=F&event=B")
 
 
+class AthleteSearchTests(TestCase):
+    def test_cyrillic_and_latin_queries_ignore_letter_case(self):
+        Athlete.objects.create(name_bg="Крум Иванов", name_lat="Krum Ivanov", sex=Sex.M, slug="krum")
+        Athlete.objects.create(name_bg="Иван Петров", name_lat="Ivan Petrov", sex=Sex.M, slug="ivan")
+        for query in ("крум", "КРУМ", "Крум", "krum", "KRUM", "ИВАНОВ"):
+            response = self.client.get("/athletes/", {"q": query})
+            self.assertContains(response, "Крум Иванов", msg_prefix=query)
+            self.assertNotContains(response, "Иван Петров", msg_prefix=query)
+
+    def test_like_wildcards_in_the_query_stay_literal(self):
+        Athlete.objects.create(name_bg="Крум Иванов", name_lat="Krum Ivanov", sex=Sex.M, slug="krum")
+        response = self.client.get("/athletes/", {"q": "крум%"})
+        self.assertNotContains(response, "Крум Иванов")
+
+
 class OrderingTests(TestCase):
     def test_competitions_are_listed_newest_first_despite_the_annotation(self):
         for day, name, slug in (
