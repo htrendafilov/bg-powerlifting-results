@@ -12,7 +12,7 @@
     {% for athlete in athletes %}
       <li>
         <a href="{% url 'athlete_detail' athlete.slug %}">{{ athlete.display_name }}</a>
-        <span>{{ athlete.get_sex_display }}{% if athlete.name_lat and athlete.name_bg %} · {{ athlete.name_lat }}{% endif %}</span>
+        <span>{{ athlete.get_sex_display }}{% if athlete.name_lat and athlete.name_bg %} · {{ athlete.name_lat }}{% endif %}{% if athlete.hint %} · {{ athlete.hint }}{% endif %}</span>
       </li>
     {% empty %}
       <li>Няма намерени състезатели.</li>

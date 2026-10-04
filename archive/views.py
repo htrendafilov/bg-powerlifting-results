@@ -29,6 +29,7 @@ from archive.services.commit import (
     ReplaceScopeError, apply_import, decimal_or_blank, matching_source, prepare_rows, rows_to_replace,
 )
 from archive.services.importers import parse_upload
+from archive.services.namesakes import career_hints, namesakes_of, shared_names
 from archive.search import match_athlete_name
 from archive.services.visibility import (
     visible_athletes,
@@ -190,7 +191,12 @@ def athlete_list(request):
     athletes = visible_athletes(Athlete.objects.all())
     if query:
         athletes = match_athlete_name(athletes, query)
-    return render(request, "archive/athlete_list.html", {"athletes": athletes[:200], "query": query})
+    athletes = list(athletes[:200])
+    shared = shared_names()
+    hints = career_hints([a for a in athletes if a.display_name in shared])
+    for athlete in athletes:
+        athlete.hint = hints.get(athlete.pk, "")
+    return render(request, "archive/athlete_list.html", {"athletes": athletes, "query": query})
 
 
 def athlete_detail(request, slug):
@@ -199,10 +205,14 @@ def athlete_detail(request, slug):
         athlete.results.select_related("competition")
     ).order_by("-competition__start_date")
     photos = athlete.photos.all() if athlete.allows_public_photos else []
+    namesakes = namesakes_of(athlete)
+    hints = career_hints([athlete, *namesakes]) if namesakes else {}
+    for person in [athlete, *namesakes]:
+        person.hint = hints.get(person.pk, "")
     return render(
         request,
         "archive/athlete_detail.html",
-        {"athlete": athlete, "results": results, "photos": photos},
+        {"athlete": athlete, "results": results, "photos": photos, "namesakes": namesakes},
     )
 
 

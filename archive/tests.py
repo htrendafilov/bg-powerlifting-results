@@ -2392,3 +2392,42 @@ class FilterFormLayoutTests(TestCase):
     def test_the_stylesheet_flattens_those_paragraphs(self):
         css = (Path("archive/static/archive/site.css")).read_text(encoding="utf-8")
         self.assertIn(".filters p { margin: 0; }", css)
+
+
+class NamesakeHintTests(TestCase):
+    """Two lifters of one name are told apart by their years and last club."""
+
+    def setUp(self):
+        self.veteran = Athlete.objects.create(name_bg="Стефан Стефанов", sex=Sex.M)
+        self.young = Athlete.objects.create(name_bg="Стефан Стефанов", sex=Sex.M)
+        self.single = Athlete.objects.create(name_bg="Жак Стойлов", sex=Sex.M)
+        starts = [
+            (self.veteran, 2013, "IND."),
+            (self.veteran, 2026, "НСА"),
+            (self.young, 2017, "99-Pld"),
+            (self.young, 2018, ""),
+            (self.single, 2019, "Loko-Sf"),
+        ]
+        for athlete, year, club in starts:
+            meet = Competition.objects.create(
+                name=str(year), slug=f"m{year}-{athlete.pk}", start_date=date(year, 5, 1)
+            )
+            Result.objects.create(
+                competition=meet, athlete=athlete, raw_name=athlete.name_bg, sex=Sex.M,
+                age_group=AgeGroup.OPEN, equipment=Equipment.CLASSIC, event=Event.SBD,
+                weight_class="74", club=club,
+            )
+
+    def test_the_list_labels_only_the_namesakes(self):
+        page = self.client.get("/athletes/")
+        self.assertContains(page, "2013–2026 · НСА")
+        # a blank club in the latest start keeps the one before it
+        self.assertContains(page, "2017–2018 · 99-Pld")
+        self.assertNotContains(page, "Loko-Sf")
+
+    def test_each_profile_points_to_the_other(self):
+        page = self.client.get(f"/athletes/{self.veteran.slug}/")
+        self.assertContains(page, "Със същото име:")
+        self.assertContains(page, f'href="/athletes/{self.young.slug}/"')
+        self.assertContains(page, "(2017–2018 · 99-Pld)")
+        self.assertNotContains(self.client.get(f"/athletes/{self.single.slug}/"), "Със същото име:")

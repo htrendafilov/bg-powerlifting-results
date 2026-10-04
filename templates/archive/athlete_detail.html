@@ -7,7 +7,16 @@
     {{ athlete.get_sex_display }}
     {% if athlete.name_lat and athlete.name_bg %} · {{ athlete.name_lat }}{% endif %}
     {% if athlete.birth_year %} · роден/а {{ athlete.birth_year }}{% endif %}
+    {% if athlete.hint %} · {{ athlete.hint }}{% endif %}
   </p>
+  {% if namesakes %}
+    <p class="lead">
+      Със същото име:
+      {% for other in namesakes %}
+        <a href="{% url 'athlete_detail' other.slug %}">{{ other.display_name }}</a>{% if other.hint %} ({{ other.hint }}){% endif %}{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    </p>
+  {% endif %}
   {% if photos %}
     <h2>През годините</h2>
     <ul class="photos">
