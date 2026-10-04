@@ -10,21 +10,44 @@ CATALOG = [
         "start": date(2011, 4, 2),
         "end": date(2011, 4, 3),
         "city": "Горна Оряховица",
-        "links": [],
+        "links": [
+            (
+                "Протокол – мъже",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/protokol-11.xls",
+            ),
+            (
+                "Протокол – жени",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/protokol_women.xls",
+            ),
+        ],
     },
     {
         "slug": "2011-gorna-oryahovitsa-youth",
         "name": "Първенство за юноши и младежи, силов трибой с екипировка",
         "start": date(2011, 4, 30),
         "city": "Горна Оряховица",
-        "links": [],
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/mladeji-kraino.xls",
+            ),
+        ],
     },
     {
         "slug": "2011-sofia-leg",
         "name": "2 кръг, вдигане от лег с екипировка",
         "start": date(2011, 5, 21),
         "city": "София",
-        "links": [],
+        "links": [
+            (
+                "Протокол – жени",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/jeni-leg.xls",
+            ),
+            (
+                "Протокол – мъже",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/maje-leg.xls",
+            ),
+        ],
     },
     {
         "slug": "2011-sofia-kupa",
@@ -32,15 +55,29 @@ CATALOG = [
         "start": date(2011, 9, 24),
         "end": date(2011, 9, 25),
         "city": "София",
-        "links": [],
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/PROTOKOL-KUPA-BG.xls",
+            ),
+        ],
     },
     {
         "slug": "2011-gorna-oryahovitsa-oktomvri",
-        "name": "Републиканско първенство, силов трибой с екипировка",
+        "name": "3 кръг, силов трибой с екипировка",
         "start": date(2011, 10, 8),
         "end": date(2011, 10, 9),
         "city": "Горна Оряховица",
-        "links": [],
+        "links": [
+            (
+                "Протокол – мъже",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/протокол-трети-кръг.xls",
+            ),
+            (
+                "Протокол – жени",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/протокол-жени-трети-краг.xls",
+            ),
+        ],
     },
     {
         "slug": "2012-gorna-oryahovitsa-krag-1",
@@ -48,7 +85,12 @@ CATALOG = [
         "start": date(2012, 3, 17),
         "end": date(2012, 3, 18),
         "city": "Горна Оряховица",
-        "links": [],
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/protokoli-1-krag.xls",
+            ),
+        ],
     },
     {
         "slug": "2012-dupnitsa-youth",
@@ -56,7 +98,12 @@ CATALOG = [
         "start": date(2012, 4, 28),
         "end": date(2012, 4, 29),
         "city": "Дупница",
-        "links": [],
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/младежи-и-девойки1.xls",
+            ),
+        ],
     },
     {
         "slug": "2012-gorna-oryahovitsa-leg",
@@ -64,7 +111,16 @@ CATALOG = [
         "start": date(2012, 5, 19),
         "end": date(2012, 5, 20),
         "city": "Горна Оряховица",
-        "links": [],
+        "links": [
+            (
+                "Без екипировка",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/19.05-bez-ekip.xls",
+            ),
+            (
+                "С екипировка",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/20.05-leg-s-ekip.xls",
+            ),
+        ],
     },
     {
         "slug": "2012-dupnitsa-kupa",
@@ -72,7 +128,12 @@ CATALOG = [
         "start": date(2012, 9, 15),
         "end": date(2012, 9, 16),
         "city": "Дупница",
-        "links": [],
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/Kupa_Bulgaria-maje-i-jeni-dupnica1.xls",
+            ),
+        ],
     },
     {
         "slug": "2012-haskovo-otborno",
@@ -87,21 +148,44 @@ CATALOG = [
         "start": date(2013, 3, 23),
         "end": date(2013, 3, 24),
         "city": "Горна Оряховица",
-        "links": [],
+        "links": [
+            (
+                "Протокол – мъже",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2014/08/24-03-2013-Gorna-Oryahovica.xls",
+            ),
+            (
+                "Протокол – жени",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2014/08/23-03-2013-women.xls",
+            ),
+        ],
     },
     {
         "slug": "2013-aytos-youth",
         "name": "Първенство за юноши и младежи, силов трибой с екипировка",
         "start": date(2013, 3, 31),
         "city": "Айтос",
-        "links": [],
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2013/04/31-03-2013-detailed_scoresheet.xls",
+            ),
+        ],
     },
     {
         "slug": "2013-dupnitsa-leg",
         "name": "2 кръг, вдигане от лег с и без екип",
         "start": date(2013, 6, 1),
         "city": "Дупница",
-        "links": [],
+        "links": [
+            (
+                "Без екипировка",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2013/06/kraino-без-екип.xls",
+            ),
+            (
+                "С екипировка",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2013/06/dupnica-ekipirovka.xls",
+            ),
+        ],
     },
     {
         "slug": "2013-varna-kupa",
@@ -109,7 +193,12 @@ CATALOG = [
         "start": date(2013, 9, 14),
         "end": date(2013, 9, 15),
         "city": "Варна",
-        "links": [],
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2013/09/3-КРЪГ.xls",
+            ),
+        ],
     },
     {
         "slug": "2014-gorna-oryahovitsa-krag-1",
@@ -117,7 +206,12 @@ CATALOG = [
         "start": date(2014, 3, 8),
         "end": date(2014, 3, 9),
         "city": "Горна Оряховица",
-        "links": [],
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2014/03/протокол-1-кръг.xlsx",
+            ),
+        ],
     },
     {
         "slug": "2014-sofia-leg",
@@ -125,7 +219,16 @@ CATALOG = [
         "start": date(2014, 5, 30),
         "end": date(2014, 5, 31),
         "city": "София",
-        "links": [],
+        "links": [
+            (
+                "Без екипировка",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2014/06/bez-ekip-2014.xls",
+            ),
+            (
+                "С екипировка",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2014/06/s-ekip-2014.xls",
+            ),
+        ],
     },
     {
         "slug": "2014-dupnitsa-kupa",
@@ -133,7 +236,12 @@ CATALOG = [
         "start": date(2014, 9, 13),
         "end": date(2014, 9, 14),
         "city": "Дупница",
-        "links": [],
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2014/10/treti-krag-kraini1.xls",
+            ),
+        ],
     },
     {
         "slug": "2015-gorna-oryahovitsa-krag-1",
@@ -141,14 +249,28 @@ CATALOG = [
         "start": date(2015, 4, 4),
         "end": date(2015, 4, 5),
         "city": "Горна Оряховица",
-        "links": [],
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2015/04/Protokoli-Silov-Triboi-Republikansko-1-vi-Krug-2015.ods",
+            ),
+        ],
     },
     {
         "slug": "2015-haskovo-leg",
         "name": "2 кръг, вдигане от лег с и без екип, Купа „Антон Колев“",
         "start": date(2015, 6, 20),
         "city": "Хасково",
-        "links": [],
+        "links": [
+            (
+                "Без екипировка",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2015/06/ДЛОШ-Кръг-2-Купа-Антон-Колев-2015-БЕЗ-ЕКИПИРОВКА.xlsx",
+            ),
+            (
+                "С екипировка",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2015/06/ДЛОШ-Кръг-2-Купа-Антон-Колев-2015-ЕКИПИРОВКА.xlsx",
+            ),
+        ],
     },
     {
         "slug": "2015-dupnitsa-kupa",
@@ -156,7 +278,12 @@ CATALOG = [
         "start": date(2015, 9, 19),
         "end": date(2015, 9, 20),
         "city": "Дупница",
-        "links": [],
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2015/09/Protokoli-Dupnica-2015-Krug-III.xls",
+            ),
+        ],
     },
     {
         "slug": "2016-gorna-oryahovitsa-krag-1",
@@ -164,14 +291,28 @@ CATALOG = [
         "start": date(2016, 4, 2),
         "end": date(2016, 4, 3),
         "city": "Горна Оряховица",
-        "links": [],
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2010/08/protokol-1-krag-mms.xls",
+            ),
+        ],
     },
     {
         "slug": "2016-haskovo-leg",
         "name": "2 кръг, вдигане от лег с и без екип, Купа „Антон Колев“",
         "start": date(2016, 6, 18),
         "city": "Хасково",
-        "links": [],
+        "links": [
+            (
+                "Без екипировка",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2016/06/2-krag-bez1.xls",
+            ),
+            (
+                "С екипировка",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2016/06/2-krag-s-ekip.xls",
+            ),
+        ],
     },
     {
         "slug": "2017-gorna-oryahovitsa-krag-1",
@@ -179,7 +320,24 @@ CATALOG = [
         "start": date(2017, 3, 4),
         "end": date(2017, 3, 5),
         "city": "Горна Оряховица",
-        "links": [],
+        "links": [
+            (
+                "Протокол – мъже",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2017/03/protokol-1-krag.xlsx",
+            ),
+            (
+                "Протокол – жени",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2017/03/1-кръг-жени-03.2017г..xls",
+            ),
+            (
+                "Юноши и младежи",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2017/03/unushi-mladeji1.xls",
+            ),
+            (
+                "Ветерани",
+                "https://powerlifting-bg.com/bpl/wp-content/uploads/2017/03/ветерани-03.2017г.1.xlsx",
+            ),
+        ],
     },
     {
         "slug": "2019-sofia-ekip",
