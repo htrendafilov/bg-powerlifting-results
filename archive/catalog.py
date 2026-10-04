@@ -340,6 +340,34 @@ CATALOG = [
         ],
     },
     {
+        "slug": "2018-sofia-ekip",
+        "name": "1 кръг, силов трибой с екипировка",
+        "start": date(2018, 3, 31),
+        "end": date(2018, 4, 1),
+        "city": "София",
+        "links": [
+            (
+                "Протокол",
+                "https://powerlifting-bg.com/bpl/%d0%bf%d1%80%d0%be%d1%82%d0%be%d0%ba%d0%be%d0%bb%d0%b8-%d0%be%d1%82-%d0%bf%d1%8a%d1%80%d0%b2%d0%b8-%d0%ba%d1%80%d1%8a%d0%b3-%d0%bd%d0%b0-%d1%80%d0%b5%d0%bf%d1%83%d0%b1%d0%bb%d0%b8%d0%ba%d0%b0%d0%bd/",
+            ),
+        ],
+    },
+    {
+        "slug": "2018-dupnitsa-leg",
+        "name": "2 кръг, вдигане от лег с и без екип",
+        "start": date(2018, 6, 9),
+        "city": "Дупница",
+        "links": [],
+    },
+    {
+        "slug": "2018-sofia-classic",
+        "name": "3 кръг, класически силов трибой",
+        "start": date(2018, 9, 22),
+        "end": date(2018, 9, 23),
+        "city": "София",
+        "links": [],
+    },
+    {
         "slug": "2019-sofia-ekip",
         "name": "1 кръг, силов трибой с екипировка",
         "start": date(2019, 3, 23),
