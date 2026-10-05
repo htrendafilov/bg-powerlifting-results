@@ -1,10 +1,15 @@
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-me")
 DEBUG = os.environ.get("DEBUG", "1") == "1"
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-me")
+# Both fallbacks are public in the repo, so production must bring its own key.
+if not DEBUG and SECRET_KEY in ("", "dev-only-change-me", "change-me"):
+    raise ImproperlyConfigured("SECRET_KEY must be set in the environment when DEBUG is off.")
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")

@@ -4,6 +4,7 @@ After=network.target
 
 [Service]
 WorkingDirectory=/home/hridi/bg-powerlifting-results
+Environment=DEBUG=0
 EnvironmentFile=/home/hridi/bg-powerlifting-results/.env
 ExecStart=/home/hridi/bg-powerlifting-results/.venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8090 --workers 1 --threads 4
 Restart=on-failure

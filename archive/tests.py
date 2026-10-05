@@ -1,4 +1,7 @@
+import os
 import re
+import subprocess
+import sys
 import tempfile
 from collections import Counter
 from dataclasses import replace
@@ -2452,3 +2455,26 @@ class AthletePagingTests(TestCase):
     def test_the_pages_keep_the_search(self):
         page = self.client.get("/athletes/", {"q": "петров"})
         self.assertContains(page, 'href="?q=%D0%BF%D0%B5%D1%82%D1%80%D0%BE%D0%B2&amp;page=2"')
+
+
+class ProductionKeyTests(TestCase):
+    """The fallback keys are public in the repo, so production refuses to start with them."""
+
+    def load_settings(self, **env):
+        env = {k: v for k, v in os.environ.items() if k not in ("DEBUG", "SECRET_KEY")} | env
+        return subprocess.run(
+            [sys.executable, "-c", "import config.settings"],
+            cwd=Path(__file__).resolve().parent.parent, env=env, capture_output=True, text=True,
+        )
+
+    def test_production_without_a_key_does_not_start(self):
+        for env in ({"DEBUG": "0"}, {"DEBUG": "0", "SECRET_KEY": "change-me"}):
+            result = self.load_settings(**env)
+            self.assertNotEqual(result.returncode, 0, env)
+            self.assertIn("SECRET_KEY must be set", result.stderr)
+
+    def test_production_with_its_own_key_starts(self):
+        self.assertEqual(self.load_settings(DEBUG="0", SECRET_KEY="k" * 50).returncode, 0)
+
+    def test_development_keeps_the_fallback(self):
+        self.assertEqual(self.load_settings().returncode, 0)
