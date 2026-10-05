@@ -66,6 +66,11 @@ h2 { font-size: 1.15rem; margin: 28px 0 8px; }
 
 .meet-list span, .file-list span { color: var(--muted); }
 
+.pager { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: 20px 0; }
+.pager a, .pager span { min-width: 2.2em; padding: 4px 8px; text-align: center; border-radius: 4px; }
+.pager a { border: 1px solid var(--line); background: var(--card); text-decoration: none; }
+.pager [aria-current] { background: var(--rust); color: var(--card); font-weight: 600; }
+
 .missing { color: var(--rust); font-style: normal; font-weight: 600; }
 
 .file-list img { display: block; max-width: min(100%, 280px); height: auto; border: 1px solid var(--line); }

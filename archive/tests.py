@@ -29,6 +29,7 @@ from archive.services.names import (
     athlete_name_key, normalize_name, reverse_transliterate, transliterate,
 )
 from archive.services.records import recalculate_records
+from archive.views import ATHLETES_PER_PAGE
 
 
 class MissingProtocolTests(TestCase):
@@ -2431,3 +2432,23 @@ class NamesakeHintTests(TestCase):
         self.assertContains(page, f'href="/athletes/{self.young.slug}/"')
         self.assertContains(page, "(2017–2018 · 99-Pld)")
         self.assertNotContains(self.client.get(f"/athletes/{self.single.slug}/"), "Със същото име:")
+
+
+class AthletePagingTests(TestCase):
+    """The athlete list is split into pages instead of stopping at the first 200."""
+
+    def setUp(self):
+        for number in range(ATHLETES_PER_PAGE + 1):
+            Athlete.objects.create(name_bg=f"Иван Петров {number:03}", sex=Sex.M)
+
+    def test_the_last_athlete_is_on_the_second_page(self):
+        first = self.client.get("/athletes/")
+        self.assertContains(first, "страница 1 от 2")
+        self.assertNotContains(first, f"Иван Петров {ATHLETES_PER_PAGE:03}")
+        self.assertContains(first, 'href="?page=2"')
+        second = self.client.get("/athletes/", {"page": 2})
+        self.assertContains(second, f"Иван Петров {ATHLETES_PER_PAGE:03}")
+
+    def test_the_pages_keep_the_search(self):
+        page = self.client.get("/athletes/", {"q": "петров"})
+        self.assertContains(page, 'href="?q=%D0%BF%D0%B5%D1%82%D1%80%D0%BE%D0%B2&amp;page=2"')

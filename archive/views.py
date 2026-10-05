@@ -6,6 +6,7 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.core.paginator import Paginator
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -39,6 +40,7 @@ from archive.services.visibility import (
 )
 
 SESSION_KEY = "protocol_import"
+ATHLETES_PER_PAGE = 100
 
 CLASS_LISTS = {
     (Sex.M, AgeGroup.SUBJUNIOR): ["53", "59", "66", "74", "83", "93", "105", "120", "120+"],
@@ -191,12 +193,20 @@ def athlete_list(request):
     athletes = visible_athletes(Athlete.objects.all())
     if query:
         athletes = match_athlete_name(athletes, query)
-    athletes = list(athletes[:200])
+    page = Paginator(athletes, ATHLETES_PER_PAGE).get_page(request.GET.get("page"))
     shared = shared_names()
-    hints = career_hints([a for a in athletes if a.display_name in shared])
-    for athlete in athletes:
+    hints = career_hints([a for a in page if a.display_name in shared])
+    for athlete in page:
         athlete.hint = hints.get(athlete.pk, "")
-    return render(request, "archive/athlete_list.html", {"athletes": athletes, "query": query})
+    return render(
+        request,
+        "archive/athlete_list.html",
+        {
+            "page": page,
+            "page_range": page.paginator.get_elided_page_range(page.number, on_each_side=2, on_ends=1),
+            "query": query,
+        },
+    )
 
 
 def athlete_detail(request, slug):

@@ -8,8 +8,13 @@
     </label>
     <button type="submit">Търси</button>
   </form>
+  {% if page.paginator.count %}
+    <p class="stats">
+      {{ page.paginator.count }} състезатели{% if page.paginator.num_pages > 1 %} · страница {{ page.number }} от {{ page.paginator.num_pages }}{% endif %}
+    </p>
+  {% endif %}
   <ul class="meet-list">
-    {% for athlete in athletes %}
+    {% for athlete in page %}
       <li>
         <a href="{% url 'athlete_detail' athlete.slug %}">{{ athlete.display_name }}</a>
         <span>{{ athlete.get_sex_display }}{% if athlete.name_lat and athlete.name_bg %} · {{ athlete.name_lat }}{% endif %}{% if athlete.hint %} · {{ athlete.hint }}{% endif %}</span>
@@ -18,4 +23,23 @@
       <li>Няма намерени състезатели.</li>
     {% endfor %}
   </ul>
+  {% if page.paginator.num_pages > 1 %}
+    <nav class="pager" aria-label="Страници">
+      {% if page.has_previous %}
+        <a href="?{% if query %}q={{ query|urlencode }}&amp;{% endif %}page={{ page.previous_page_number }}" rel="prev">‹ Предишна</a>
+      {% endif %}
+      {% for number in page_range %}
+        {% if number == page.number %}
+          <span aria-current="page">{{ number }}</span>
+        {% elif number == page.paginator.ELLIPSIS %}
+          <span>{{ number }}</span>
+        {% else %}
+          <a href="?{% if query %}q={{ query|urlencode }}&amp;{% endif %}page={{ number }}">{{ number }}</a>
+        {% endif %}
+      {% endfor %}
+      {% if page.has_next %}
+        <a href="?{% if query %}q={{ query|urlencode }}&amp;{% endif %}page={{ page.next_page_number }}" rel="next">Следваща ›</a>
+      {% endif %}
+    </nav>
+  {% endif %}
 {% endblock %}
