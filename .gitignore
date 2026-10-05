@@ -10,3 +10,7 @@ staticfiles/
 .DS_Store
 *.log
 data/backups/
+
+# Working notes and source copies with athletes' personal data; never published.
+outputs/
+review/
