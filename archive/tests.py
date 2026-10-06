@@ -15,7 +15,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 
 from archive.models import (
-    AgeGroup, Athlete, AthletePhoto, Competition, Equipment, Event, Lift, MeetLevel,
+    AgeGroup, Athlete, AthleteAlias, AthletePhoto, Competition, Equipment, Event, Lift, MeetLevel,
     CompetitionFile, FileKind, Record, RecordOrigin, Result, Sex, SiteSettings,
 )
 from archive.models import photo_path
@@ -919,6 +919,33 @@ class MergeSurvivesReimportTests(TestCase):
         found, created = athlete_for("\u0412 \u0412", Sex.F)
         self.assertFalse(created)
         self.assertEqual(found.pk, first.pk)
+
+
+class Haskovo2017SpellingTests(TestCase):
+    """The Haskovo 2017 file spells three lifters exactly as the existing
+    profiles, so the import must land on those instead of minting new ones.
+    Cyrillic Жак Стойлов keys differently from the Latin-derived profile, so
+    only the merge alias keeps that spelling from coming back as a duplicate."""
+
+    def test_the_three_spellings_land_on_the_existing_profiles(self):
+        woman = Athlete.objects.create(
+            name_bg="Румяна Комарска", name_lat="Rumyana Komarska", sex=Sex.F)
+        stoylov = Athlete.objects.create(
+            name_bg="Жак Стойлов", name_lat="Jak Stoylov", sex=Sex.M)
+        AthleteAlias.objects.create(
+            athlete=stoylov, sex=Sex.M,
+            name_key=athlete_name_key("Жак Стойлов", "Жак Стойлов"))
+        kaparanov = Athlete.objects.create(
+            name_bg="Иван Капаранов", name_lat="Ivan Kaparanov", sex=Sex.M)
+        for raw, sex, expected in [
+            ("Румяна Комарска", Sex.F, woman),
+            ("Жак Стойлов", Sex.M, stoylov),
+            ("Иван Капаранов", Sex.M, kaparanov),
+        ]:
+            found, created = athlete_for(raw, sex)
+            self.assertFalse(created, raw)
+            self.assertEqual(found.pk, expected.pk)
+        self.assertEqual(Athlete.objects.count(), 3)
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
